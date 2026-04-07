@@ -1,0 +1,23 @@
+
+> task-tracker-frontend@1.0.0 dev
+> vite --host 127.0.0.1
+
+
+  [32m[1mVITE[22m v5.4.21[39m  [2mready in [0m[1m558[22m[2m[0m ms[22m
+
+  [32m➜[39m  [1mLocal[22m:   [36mhttp://127.0.0.1:[1m5173[22m/[39m
+[2m3:24:30 PM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/main.jsx[22m
+[2m3:36:58 PM[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/components/CreateTaskForm.jsx[22m
+[2m3:48:09 PM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/main.jsx[22m
+[2m3:51:35 PM[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/pages/AdminDashboard.jsx[22m
+[2m3:51:44 PM[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/components/AdminAnalytics.jsx[22m
+[2m4:22:33 PM[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/components/TaskManagementModal.jsx[22m
+[2m4:28:28 PM[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/pages/EmployeeDashboard.jsx[22m
+[2m4:28:37 PM[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/pages/AdminDashboard.jsx[22m
+[2m4:37:23 PM[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/components/AttendancePanel.jsx[22m
+[2m4:37:23 PM[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/components/TaskManagementModal.jsx[22m
+[2m4:37:23 PM[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/components/NotificationBell.jsx[22m
+[2m4:46:49 PM[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/components/AttendancePanel.jsx[22m
+[2m4:46:49 PM[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/components/AdminAttendanceOverview.jsx[22m
+[2m4:53:15 PM[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/components/AdminAnalytics.jsx[22m
+[2m5:08:39 PM[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/components/AttendancePanel.jsx[22m

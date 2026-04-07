@@ -1,0 +1,53 @@
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+:root {
+  color: #183153;
+  background: #f3f6fb;
+  font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+}
+
+body {
+  font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+  background:
+    radial-gradient(circle at top left, rgba(213, 226, 255, 0.75), transparent 32%),
+    radial-gradient(circle at top right, rgba(255, 226, 204, 0.55), transparent 28%),
+    linear-gradient(180deg, #f6f8fc 0%, #edf2f8 100%);
+  min-height: 100vh;
+  color: #183153;
+}
+
+#root {
+  min-height: 100vh;
+}
+
+button,
+input,
+select,
+textarea {
+  font: inherit;
+}
+
+button:disabled {
+  cursor: not-allowed;
+}
+
+@keyframes pulse {
+  0% {
+    transform: scale(0.96);
+    opacity: 0.82;
+  }
+
+  50% {
+    transform: scale(1);
+    opacity: 1;
+  }
+
+  100% {
+    transform: scale(0.96);
+    opacity: 0.82;
+  }
+}

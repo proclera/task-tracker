@@ -1,0 +1,31 @@
+
+> task-tracker-backend@1.0.0 dev
+> node --watch src/server.js
+
+Server running on port 3000
+Restarting 'src/server.js'
+Server running on port 3000
+Restarting 'src/server.js'
+Server running on port 3000
+Restarting 'src/server.js'
+Server running on port 3000
+Restarting 'src/server.js'
+Server running on port 3000
+Restarting 'src/server.js'
+Server running on port 3000
+Restarting 'src/server.js'
+Server running on port 3000
+Restarting 'src/server.js'
+Server running on port 3000
+Restarting 'src/server.js'
+Server running on port 3000
+Restarting 'src/server.js'
+Server running on port 3000
+Restarting 'src/server.js'
+Server running on port 3000
+Restarting 'src/server.js'
+Server running on port 3000
+Restarting 'src/server.js'
+Server running on port 3000
+Restarting 'src/server.js'
+Server running on port 3000
