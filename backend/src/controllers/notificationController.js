@@ -1,26 +1,19 @@
 const { getDB, saveDB } = require('../config/database');
-
-const mapRow = (columns, row) => {
-  const obj = {};
-  columns.forEach((col, i) => obj[col] = row[i]);
-  return obj;
-};
+const { getRow, getRows } = require('../utils/sql');
 
 exports.getNotifications = async (req, res) => {
   try {
     const db = await getDB();
     const user_id = req.user.id;
 
-    const result = db.exec(`SELECT * FROM notifications
-                           WHERE user_id = ?
-                           ORDER BY created_at DESC
-                           LIMIT 50`, [user_id]);
-
-    if (result.length === 0) {
-      return res.json({ notifications: [] });
-    }
-
-    const notifications = result[0].values.map(row => mapRow(result[0].columns, row));
+    const notifications = await getRows(
+      db,
+      `SELECT * FROM notifications
+       WHERE user_id = ?
+       ORDER BY created_at DESC
+       LIMIT 50`,
+      [user_id]
+    );
     res.json({ notifications });
   } catch (error) {
     console.error('Get notifications error:', error);
@@ -33,11 +26,14 @@ exports.getUnreadCount = async (req, res) => {
     const db = await getDB();
     const user_id = req.user.id;
 
-    const result = db.exec(`SELECT COUNT(*) as count FROM notifications
-                           WHERE user_id = ? AND is_read = 0`, [user_id]);
+    const result = await getRow(
+      db,
+      `SELECT COUNT(*)::int as count FROM notifications
+       WHERE user_id = ? AND is_read = 0`,
+      [user_id]
+    );
 
-    const count = result[0].values[0][0];
-    res.json({ unreadCount: count });
+    res.json({ unreadCount: result?.count || 0 });
   } catch (error) {
     console.error('Get unread count error:', error);
     res.status(500).json({ error: 'Failed to fetch unread count' });
@@ -50,13 +46,13 @@ exports.markAsRead = async (req, res) => {
     const { id } = req.params;
     const user_id = req.user.id;
 
-    const existing = db.exec(`SELECT * FROM notifications WHERE id = ? AND user_id = ?`, [id, user_id]);
-    if (existing.length === 0 || existing[0].values.length === 0) {
+    const existing = await getRow(db, `SELECT * FROM notifications WHERE id = ? AND user_id = ?`, [id, user_id]);
+    if (!existing) {
       return res.status(404).json({ error: 'Notification not found' });
     }
 
-    db.run(`UPDATE notifications SET is_read = 1 WHERE id = ?`, [id]);
-    saveDB();
+    await db.run(`UPDATE notifications SET is_read = 1 WHERE id = ?`, [id]);
+    await saveDB();
 
     res.json({ message: 'Notification marked as read' });
   } catch (error) {
@@ -70,8 +66,8 @@ exports.markAllAsRead = async (req, res) => {
     const db = await getDB();
     const user_id = req.user.id;
 
-    db.run(`UPDATE notifications SET is_read = 1 WHERE user_id = ?`, [user_id]);
-    saveDB();
+    await db.run(`UPDATE notifications SET is_read = 1 WHERE user_id = ?`, [user_id]);
+    await saveDB();
 
     res.json({ message: 'All notifications marked as read' });
   } catch (error) {
@@ -80,7 +76,9 @@ exports.markAllAsRead = async (req, res) => {
   }
 };
 
-exports.createNotification = (db, user_id, title, message, type = 'info') => {
-  db.run(`INSERT INTO notifications (user_id, title, message, type) VALUES (?, ?, ?, ?)`,
-    [user_id, title, message, type]);
+exports.createNotification = async (db, user_id, title, message, type = 'info') => {
+  await db.run(
+    `INSERT INTO notifications (user_id, title, message, type) VALUES (?, ?, ?, ?)`,
+    [user_id, title, message, type]
+  );
 };

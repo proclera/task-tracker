@@ -25,7 +25,7 @@ exports.register = async (req, res) => {
 
     const db = await getDB();
     const normalizedEmail = email.trim().toLowerCase();
-    const existing = getRow(db, 'SELECT id FROM users WHERE email = ?', [normalizedEmail]);
+    const existing = await getRow(db, 'SELECT id FROM users WHERE email = ?', [normalizedEmail]);
 
     if (existing) {
       return res.status(409).json({ error: 'Email already registered' });
@@ -35,15 +35,16 @@ exports.register = async (req, res) => {
     const jwt = require('jsonwebtoken');
     const passwordHash = await bcrypt.hash(password, 10);
 
-    db.run(
-      `INSERT INTO users (email, password_hash, role, first_name, last_name) VALUES (?, ?, ?, ?, ?)`,
+    const result = await db.run(
+      `INSERT INTO users (email, password_hash, role, first_name, last_name)
+       VALUES (?, ?, ?, ?, ?)
+       RETURNING id`,
       [normalizedEmail, passwordHash, role, firstName.trim(), lastName.trim()]
     );
 
-    const result = db.exec('SELECT last_insert_rowid()');
-    const userId = result[0].values[0][0];
+    const userId = result.rows[0].id;
 
-    saveDB();
+    await saveDB();
 
     const user = {
       id: userId,
@@ -74,7 +75,7 @@ exports.login = async (req, res) => {
 
     const db = await getDB();
     const normalizedEmail = email.trim().toLowerCase();
-    const user = getRow(db, 'SELECT * FROM users WHERE email = ?', [normalizedEmail]);
+    const user = await getRow(db, 'SELECT * FROM users WHERE email = ?', [normalizedEmail]);
 
     if (!user) {
       return res.status(401).json({ error: 'Invalid credentials' });
@@ -106,7 +107,7 @@ exports.login = async (req, res) => {
 exports.getCurrentUser = async (req, res) => {
   try {
     const db = await getDB();
-    const user = getRow(
+    const user = await getRow(
       db,
       'SELECT id, email, role, first_name, last_name FROM users WHERE id = ?',
       [req.user.id]

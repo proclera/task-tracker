@@ -24,7 +24,7 @@ exports.getMyAttendanceToday = async (req, res) => {
     const db = await getDB();
     const attendanceDate = getTodayDate();
 
-    const attendance = getRow(
+    const attendance = await getRow(
       db,
       `${ATTENDANCE_SELECT} WHERE ar.user_id = ? AND ar.attendance_date = ?`,
       [req.user.id, attendanceDate]
@@ -42,7 +42,7 @@ exports.checkIn = async (req, res) => {
     const db = await getDB();
     const attendanceDate = getTodayDate();
 
-    const existing = getRow(
+    const existing = await getRow(
       db,
       'SELECT id FROM attendance_records WHERE user_id = ? AND attendance_date = ?',
       [req.user.id, attendanceDate]
@@ -56,17 +56,17 @@ exports.checkIn = async (req, res) => {
     const isLate = now.getHours() > 9 || (now.getHours() === 9 && now.getMinutes() > 15);
     const status = isLate ? 'late' : 'present';
 
-    db.run(
-      `INSERT INTO attendance_records (user_id, attendance_date, check_in_time, status)
-       VALUES (?, ?, CURRENT_TIMESTAMP, ?)`,
+    const result = await db.run(
+      `INSERT INTO attendance_records (user_id, attendance_date, status)
+       VALUES (?, ?, ?)
+       RETURNING id`,
       [req.user.id, attendanceDate, status]
     );
 
-    const result = db.exec('SELECT last_insert_rowid()');
-    const recordId = result[0].values[0][0];
-    saveDB();
+    const recordId = result.rows[0].id;
+    await saveDB();
 
-    const attendance = getRow(db, `${ATTENDANCE_SELECT} WHERE ar.id = ?`, [recordId]);
+    const attendance = await getRow(db, `${ATTENDANCE_SELECT} WHERE ar.id = ?`, [recordId]);
     res.status(201).json({ attendance });
   } catch (error) {
     console.error('Check in error:', error);
@@ -80,7 +80,7 @@ exports.checkOut = async (req, res) => {
     const { id } = req.params;
     const workSummary = String(req.body?.work_summary || '').trim();
 
-    const attendance = getRow(
+    const attendance = await getRow(
       db,
       `${ATTENDANCE_SELECT} WHERE ar.id = ? AND ar.user_id = ?`,
       [id, req.user.id]
@@ -105,16 +105,16 @@ exports.checkOut = async (req, res) => {
     const now = new Date();
     const totalMinutes = calculateMinutes(attendance.check_in_time, now.toISOString());
 
-    db.run(
+    await db.run(
       `UPDATE attendance_records
        SET check_out_time = CURRENT_TIMESTAMP, total_minutes = ?, work_summary = ?
        WHERE id = ?`,
       [totalMinutes, workSummary, id]
     );
 
-    saveDB();
+    await saveDB();
 
-    const updatedAttendance = getRow(db, `${ATTENDANCE_SELECT} WHERE ar.id = ?`, [id]);
+    const updatedAttendance = await getRow(db, `${ATTENDANCE_SELECT} WHERE ar.id = ?`, [id]);
     res.json({ attendance: updatedAttendance });
   } catch (error) {
     console.error('Check out error:', error);
@@ -127,7 +127,7 @@ exports.getMyAttendanceHistory = async (req, res) => {
     const db = await getDB();
     const monthStart = getMonthStartDate();
 
-    const records = getRows(
+    const records = await getRows(
       db,
       `${ATTENDANCE_SELECT}
        WHERE ar.user_id = ? AND ar.attendance_date >= ?
@@ -148,23 +148,26 @@ exports.getAttendanceSummary = async (req, res) => {
     const attendanceDate = getTodayDate();
     const monthStart = getMonthStartDate();
 
-    const todayCheckedIn = db.exec(
-      `SELECT COUNT(*) as count FROM attendance_records WHERE attendance_date = ?`,
+    const todayCheckedIn = await getRow(
+      db,
+      `SELECT COUNT(*)::int as count FROM attendance_records WHERE attendance_date = ?`,
       [attendanceDate]
     );
-    const lateToday = db.exec(
-      `SELECT COUNT(*) as count FROM attendance_records WHERE attendance_date = ? AND status = 'late'`,
+    const lateToday = await getRow(
+      db,
+      `SELECT COUNT(*)::int as count FROM attendance_records WHERE attendance_date = ? AND status = 'late'`,
       [attendanceDate]
     );
-    const checkedOutToday = db.exec(
-      `SELECT COUNT(*) as count FROM attendance_records WHERE attendance_date = ? AND check_out_time IS NOT NULL`,
+    const checkedOutToday = await getRow(
+      db,
+      `SELECT COUNT(*)::int as count FROM attendance_records WHERE attendance_date = ? AND check_out_time IS NOT NULL`,
       [attendanceDate]
     );
-    const recentAttendance = getRows(
+    const recentAttendance = await getRows(
       db,
       `${ATTENDANCE_SELECT} ORDER BY ar.attendance_date DESC, ar.check_in_time DESC LIMIT 10`
     );
-    const monthlyAttendance = getRows(
+    const monthlyAttendance = await getRows(
       db,
       `${ATTENDANCE_SELECT}
        WHERE ar.attendance_date >= ?
@@ -174,9 +177,9 @@ exports.getAttendanceSummary = async (req, res) => {
 
     res.json({
       summary: {
-        todayCheckedIn: todayCheckedIn[0]?.values[0]?.[0] || 0,
-        lateToday: lateToday[0]?.values[0]?.[0] || 0,
-        checkedOutToday: checkedOutToday[0]?.values[0]?.[0] || 0,
+        todayCheckedIn: todayCheckedIn?.count || 0,
+        lateToday: lateToday?.count || 0,
+        checkedOutToday: checkedOutToday?.count || 0,
         recentAttendance,
         monthlyAttendance
       }

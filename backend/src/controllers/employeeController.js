@@ -4,20 +4,11 @@ const { getRow } = require('../utils/sql');
 exports.getEmployees = async (req, res) => {
   try {
     const db = await getDB();
-    const result = db.exec("SELECT id, email, first_name, last_name, role FROM users WHERE role = 'employee'");
+    const employees = await db.query(
+      "SELECT id, email, first_name, last_name, role FROM users WHERE role = 'employee' ORDER BY first_name, last_name"
+    );
 
-    if (result.length === 0) {
-      return res.json({ employees: [] });
-    }
-
-    const columns = result[0].columns;
-    const employees = result[0].values.map(row => {
-      const emp = {};
-      columns.forEach((col, i) => emp[col] = row[i]);
-      return emp;
-    });
-
-    res.json({ employees });
+    res.json({ employees: employees.rows });
   } catch (error) {
     console.error('Get employees error:', error);
     res.status(500).json({ error: 'Failed to fetch employees' });
@@ -33,7 +24,7 @@ exports.deleteEmployee = async (req, res) => {
       return res.status(400).json({ error: 'Invalid employee id' });
     }
 
-    const employee = getRow(
+    const employee = await getRow(
       db,
       'SELECT id, first_name, last_name, role FROM users WHERE id = ?',
       [employeeId]
@@ -43,15 +34,15 @@ exports.deleteEmployee = async (req, res) => {
       return res.status(404).json({ error: 'Employee not found' });
     }
 
-    db.run('UPDATE tasks SET assignee_id = NULL WHERE assignee_id = ?', [employeeId]);
-    db.run('DELETE FROM employee_profiles WHERE user_id = ?', [employeeId]);
-    db.run('DELETE FROM comments WHERE user_id = ?', [employeeId]);
-    db.run('DELETE FROM notifications WHERE user_id = ?', [employeeId]);
-    db.run('DELETE FROM time_entries WHERE user_id = ?', [employeeId]);
-    db.run('DELETE FROM attendance_records WHERE user_id = ?', [employeeId]);
-    db.run('DELETE FROM users WHERE id = ?', [employeeId]);
+    await db.run('UPDATE tasks SET assignee_id = NULL WHERE assignee_id = ?', [employeeId]);
+    await db.run('DELETE FROM employee_profiles WHERE user_id = ?', [employeeId]);
+    await db.run('DELETE FROM comments WHERE user_id = ?', [employeeId]);
+    await db.run('DELETE FROM notifications WHERE user_id = ?', [employeeId]);
+    await db.run('DELETE FROM time_entries WHERE user_id = ?', [employeeId]);
+    await db.run('DELETE FROM attendance_records WHERE user_id = ?', [employeeId]);
+    await db.run('DELETE FROM users WHERE id = ?', [employeeId]);
 
-    saveDB();
+    await saveDB();
 
     res.json({
       message: 'Employee deleted successfully',

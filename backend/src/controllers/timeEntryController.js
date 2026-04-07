@@ -13,12 +13,12 @@ const getTimeEntriesForTask = async (req, res) => {
     const db = await getDB();
     const { taskId } = req.params;
 
-    const task = getRow(db, 'SELECT id FROM tasks WHERE id = ?', [taskId]);
+    const task = await getRow(db, 'SELECT id FROM tasks WHERE id = ?', [taskId]);
     if (!task) {
       return res.status(404).json({ error: 'Task not found' });
     }
 
-    const entries = getRows(
+    const entries = await getRows(
       db,
       `${TIME_ENTRY_SELECT} WHERE te.task_id = ? ORDER BY te.start_time DESC`,
       [taskId]
@@ -35,7 +35,7 @@ const getActiveTimeEntry = async (req, res) => {
   try {
     const db = await getDB();
 
-    const activeEntry = getRow(
+    const activeEntry = await getRow(
       db,
       `${TIME_ENTRY_SELECT} WHERE te.user_id = ? AND te.end_time IS NULL ORDER BY te.start_time DESC LIMIT 1`,
       [req.user.id]
@@ -58,7 +58,7 @@ const startTimeEntry = async (req, res) => {
       return res.status(400).json({ error: 'task_id is required' });
     }
 
-    const task = getRow(db, 'SELECT id, assignee_id FROM tasks WHERE id = ?', [task_id]);
+    const task = await getRow(db, 'SELECT id, assignee_id FROM tasks WHERE id = ?', [task_id]);
     if (!task) {
       return res.status(404).json({ error: 'Task not found' });
     }
@@ -67,7 +67,7 @@ const startTimeEntry = async (req, res) => {
       return res.status(403).json({ error: 'You can only track time for tasks assigned to you' });
     }
 
-    const activeEntry = getRow(
+    const activeEntry = await getRow(
       db,
       'SELECT id FROM time_entries WHERE user_id = ? AND end_time IS NULL',
       [userId]
@@ -77,16 +77,15 @@ const startTimeEntry = async (req, res) => {
       return res.status(409).json({ error: 'Stop your active timer before starting a new one' });
     }
 
-    db.run(
-      'INSERT INTO time_entries (task_id, user_id, start_time, note) VALUES (?, ?, CURRENT_TIMESTAMP, ?)',
+    const result = await db.run(
+      'INSERT INTO time_entries (task_id, user_id, note) VALUES (?, ?, ?) RETURNING id',
       [task_id, userId, note?.trim() || null]
     );
 
-    const result = db.exec('SELECT last_insert_rowid()');
-    const entryId = result[0].values[0][0];
-    saveDB();
+    const entryId = result.rows[0].id;
+    await saveDB();
 
-    const timeEntry = getRow(db, `${TIME_ENTRY_SELECT} WHERE te.id = ?`, [entryId]);
+    const timeEntry = await getRow(db, `${TIME_ENTRY_SELECT} WHERE te.id = ?`, [entryId]);
     res.status(201).json({ timeEntry });
   } catch (error) {
     console.error('Start time entry error:', error);
@@ -101,7 +100,7 @@ const stopTimeEntry = async (req, res) => {
     const { note } = req.body;
     const userId = req.user.id;
 
-    const entry = getRow(
+    const entry = await getRow(
       db,
       'SELECT * FROM time_entries WHERE id = ? AND user_id = ?',
       [id, userId]
@@ -119,16 +118,16 @@ const stopTimeEntry = async (req, res) => {
     const endTime = new Date();
     const durationMinutes = Math.max(1, Math.round((endTime - startTime) / 60000));
 
-    db.run(
+    await db.run(
       `UPDATE time_entries
        SET end_time = CURRENT_TIMESTAMP, duration_minutes = ?, note = ?
        WHERE id = ?`,
       [durationMinutes, note?.trim() || entry.note || null, id]
     );
 
-    saveDB();
+    await saveDB();
 
-    const timeEntry = getRow(db, `${TIME_ENTRY_SELECT} WHERE te.id = ?`, [id]);
+    const timeEntry = await getRow(db, `${TIME_ENTRY_SELECT} WHERE te.id = ?`, [id]);
     res.json({ timeEntry });
   } catch (error) {
     console.error('Stop time entry error:', error);

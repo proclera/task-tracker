@@ -14,9 +14,9 @@ const TASK_SELECT = `SELECT t.*, u.first_name || ' ' || u.last_name as assignee_
                      LEFT JOIN users u ON t.assignee_id = u.id
                      LEFT JOIN users c ON t.created_by = c.id`;
 
-const getTaskByIdFromDb = (db, id) => getRow(db, `${TASK_SELECT} WHERE t.id = ?`, [id]);
+const getTaskByIdFromDb = async (db, id) => getRow(db, `${TASK_SELECT} WHERE t.id = ?`, [id]);
 
-const getAssignableEmployee = (db, assigneeId) => {
+const getAssignableEmployee = async (db, assigneeId) => {
   if (assigneeId === null || assigneeId === undefined) {
     return null;
   }
@@ -28,12 +28,12 @@ const getAssignableEmployee = (db, assigneeId) => {
   );
 };
 
-const validateAssignee = (db, assigneeId) => {
+const validateAssignee = async (db, assigneeId) => {
   if (assigneeId === null || assigneeId === undefined) {
     return { employee: null };
   }
 
-  const employee = getAssignableEmployee(db, assigneeId);
+  const employee = await getAssignableEmployee(db, assigneeId);
   if (!employee) {
     return { error: 'Assigned user must be an existing employee' };
   }
@@ -74,7 +74,7 @@ exports.getAllTasks = async (req, res) => {
 
     query += ` ORDER BY t.created_at DESC`;
 
-    const tasks = getRows(db, query, params);
+    const tasks = await getRows(db, query, params);
     if (tasks.length === 0) {
       return res.json({ tasks: [] });
     }
@@ -91,7 +91,7 @@ exports.getTaskById = async (req, res) => {
     const db = await getDB();
     const { id } = req.params;
 
-    const task = getTaskByIdFromDb(db, id);
+    const task = await getTaskByIdFromDb(db, id);
     if (!task) {
       return res.status(404).json({ error: 'Task not found' });
     }
@@ -111,23 +111,25 @@ exports.createTask = async (req, res) => {
       return res.status(400).json({ error: errors[0] });
     }
 
-    const { error: assigneeError } = validateAssignee(db, task.assignee_id);
+    const { error: assigneeError } = await validateAssignee(db, task.assignee_id);
     if (assigneeError) {
       return res.status(400).json({ error: assigneeError });
     }
 
     const created_by = req.user.id;
 
-    db.run(`INSERT INTO tasks (title, description, status, priority, assignee_id, created_by, due_date)
-            VALUES (?, ?, ?, ?, ?, ?, ?)`,
-      [task.title, task.description, task.status, task.priority, task.assignee_id, created_by, task.due_date]);
+    const result = await db.run(
+      `INSERT INTO tasks (title, description, status, priority, assignee_id, created_by, due_date)
+       VALUES (?, ?, ?, ?, ?, ?, ?)
+       RETURNING id`,
+      [task.title, task.description, task.status, task.priority, task.assignee_id, created_by, task.due_date]
+    );
 
-    const result = db.exec('SELECT last_insert_rowid()');
-    const taskId = result[0].values[0][0];
+    const taskId = result.rows[0].id;
 
     // Create notification for assignee
     if (task.assignee_id) {
-      createNotification(
+      await createNotification(
         db,
         task.assignee_id,
         'New Task Assigned',
@@ -136,9 +138,9 @@ exports.createTask = async (req, res) => {
       );
     }
 
-    saveDB();
+    await saveDB();
 
-    const createdTask = getTaskByIdFromDb(db, taskId);
+    const createdTask = await getTaskByIdFromDb(db, taskId);
     res.status(201).json({ task: createdTask });
   } catch (error) {
     console.error('Create task error:', error);
@@ -151,7 +153,7 @@ exports.updateTask = async (req, res) => {
     const db = await getDB();
     const { id } = req.params;
 
-    const current = getRow(db, `SELECT * FROM tasks WHERE id = ?`, [id]);
+    const current = await getRow(db, `SELECT * FROM tasks WHERE id = ?`, [id]);
     if (!current) {
       return res.status(404).json({ error: 'Task not found' });
     }
@@ -170,18 +172,21 @@ exports.updateTask = async (req, res) => {
       due_date: task.due_date !== undefined ? task.due_date : current.due_date
     };
 
-    const { error: assigneeError } = validateAssignee(db, nextTask.assignee_id);
+    const { error: assigneeError } = await validateAssignee(db, nextTask.assignee_id);
     if (assigneeError) {
       return res.status(400).json({ error: assigneeError });
     }
 
-    db.run(`UPDATE tasks SET title = ?, description = ?, status = ?, priority = ?, assignee_id = ?, due_date = ?, updated_at = CURRENT_TIMESTAMP
-            WHERE id = ?`,
-      [nextTask.title, nextTask.description, nextTask.status, nextTask.priority, nextTask.assignee_id, nextTask.due_date, id]);
+    await db.run(
+      `UPDATE tasks
+       SET title = ?, description = ?, status = ?, priority = ?, assignee_id = ?, due_date = ?, updated_at = CURRENT_TIMESTAMP
+       WHERE id = ?`,
+      [nextTask.title, nextTask.description, nextTask.status, nextTask.priority, nextTask.assignee_id, nextTask.due_date, id]
+    );
 
     // Notify if assignee changed
     if (nextTask.assignee_id && nextTask.assignee_id !== current.assignee_id) {
-      createNotification(
+      await createNotification(
         db,
         nextTask.assignee_id,
         'New Task Assigned',
@@ -192,7 +197,7 @@ exports.updateTask = async (req, res) => {
 
     // Notify if status changed
     if (nextTask.status !== current.status && nextTask.assignee_id) {
-      createNotification(
+      await createNotification(
         db,
         nextTask.assignee_id,
         'Task Status Updated',
@@ -201,9 +206,9 @@ exports.updateTask = async (req, res) => {
       );
     }
 
-    saveDB();
+    await saveDB();
 
-    const updatedTask = getTaskByIdFromDb(db, id);
+    const updatedTask = await getTaskByIdFromDb(db, id);
     res.json({ task: updatedTask });
   } catch (error) {
     console.error('Update task error:', error);
@@ -221,23 +226,23 @@ exports.assignTask = async (req, res) => {
       return res.status(400).json({ error: errors[0] });
     }
 
-    const current = getRow(db, `SELECT * FROM tasks WHERE id = ?`, [id]);
+    const current = await getRow(db, `SELECT * FROM tasks WHERE id = ?`, [id]);
     if (!current) {
       return res.status(404).json({ error: 'Task not found' });
     }
 
-    const { error: assigneeError } = validateAssignee(db, assignment.assignee_id);
+    const { error: assigneeError } = await validateAssignee(db, assignment.assignee_id);
     if (assigneeError) {
       return res.status(400).json({ error: assigneeError });
     }
 
-    db.run(
+    await db.run(
       `UPDATE tasks SET assignee_id = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`,
       [assignment.assignee_id, id]
     );
 
     if (assignment.assignee_id && assignment.assignee_id !== current.assignee_id) {
-      createNotification(
+      await createNotification(
         db,
         assignment.assignee_id,
         'New Task Assigned',
@@ -246,9 +251,9 @@ exports.assignTask = async (req, res) => {
       );
     }
 
-    saveDB();
+    await saveDB();
 
-    const task = getTaskByIdFromDb(db, id);
+    const task = await getTaskByIdFromDb(db, id);
     res.json({ task });
   } catch (error) {
     console.error('Assign task error:', error);
@@ -261,13 +266,13 @@ exports.deleteTask = async (req, res) => {
     const db = await getDB();
     const { id } = req.params;
 
-    const existing = getRow(db, `SELECT id FROM tasks WHERE id = ?`, [id]);
+    const existing = await getRow(db, `SELECT id FROM tasks WHERE id = ?`, [id]);
     if (!existing) {
       return res.status(404).json({ error: 'Task not found' });
     }
 
-    db.run(`DELETE FROM tasks WHERE id = ?`, [id]);
-    saveDB();
+    await db.run(`DELETE FROM tasks WHERE id = ?`, [id]);
+    await saveDB();
 
     res.json({ message: 'Task deleted successfully' });
   } catch (error) {
@@ -296,7 +301,7 @@ exports.getMyTasks = async (req, res) => {
 
     query += ` ORDER BY t.created_at DESC`;
 
-    const tasks = getRows(db, query, params);
+    const tasks = await getRows(db, query, params);
     if (tasks.length === 0) {
       return res.json({ tasks: [] });
     }
@@ -320,22 +325,27 @@ exports.updateMyTaskStatus = async (req, res) => {
     }
 
     // Check if task exists and is assigned to this user
-    const current = getRow(db, `SELECT * FROM tasks WHERE id = ? AND assignee_id = ?`, [id, userId]);
+    const current = await getRow(db, `SELECT * FROM tasks WHERE id = ? AND assignee_id = ?`, [id, userId]);
     if (!current) {
       return res.status(404).json({ error: 'Task not found or not assigned to you' });
     }
 
-    db.run(`UPDATE tasks SET status = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`, [status, id]);
+    await db.run(`UPDATE tasks SET status = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`, [status, id]);
 
     // Notify task creator about status change
     if (current.created_by && current.created_by !== userId) {
-      createNotification(db, current.created_by, 'Task Status Updated',
-        `Task "${current.title}" status changed to ${status} by assignee`, 'update');
+      await createNotification(
+        db,
+        current.created_by,
+        'Task Status Updated',
+        `Task "${current.title}" status changed to ${status} by assignee`,
+        'update'
+      );
     }
 
-    saveDB();
+    await saveDB();
 
-    const task = getTaskByIdFromDb(db, id);
+    const task = await getTaskByIdFromDb(db, id);
     res.json({ task });
   } catch (error) {
     console.error('Update my task status error:', error);
@@ -349,51 +359,51 @@ exports.getAnalytics = async (req, res) => {
     const db = await getDB();
 
     // Total tasks
-    const totalTasks = db.exec(`SELECT COUNT(*) as count FROM tasks`);
-    const assignedTasks = db.exec(`SELECT COUNT(*) as count FROM tasks WHERE assignee_id IS NOT NULL`);
-    const pendingTasks = db.exec(`SELECT COUNT(*) as count FROM tasks WHERE status = 'pending'`);
-    const inProgressTasks = db.exec(`SELECT COUNT(*) as count FROM tasks WHERE status = 'in_progress'`);
-    const completedTasks = db.exec(`SELECT COUNT(*) as count FROM tasks WHERE status = 'completed'`);
+    const totalTasks = await getRow(db, `SELECT COUNT(*)::int as count FROM tasks`);
+    const assignedTasks = await getRow(db, `SELECT COUNT(*)::int as count FROM tasks WHERE assignee_id IS NOT NULL`);
+    const pendingTasks = await getRow(db, `SELECT COUNT(*)::int as count FROM tasks WHERE status = 'pending'`);
+    const inProgressTasks = await getRow(db, `SELECT COUNT(*)::int as count FROM tasks WHERE status = 'in_progress'`);
+    const completedTasks = await getRow(db, `SELECT COUNT(*)::int as count FROM tasks WHERE status = 'completed'`);
 
     // Tasks by priority
-    const tasksByPriority = db.exec(`SELECT priority, COUNT(*) as count FROM tasks GROUP BY priority`);
+    const tasksByPriority = await getRows(db, `SELECT priority, COUNT(*)::int as count FROM tasks GROUP BY priority`);
 
     // Tasks per employee
-    const tasksPerEmployee = db.exec(`SELECT u.id, u.first_name || ' ' || u.last_name as name,
-                                     COUNT(t.id) as total_tasks,
-                                     SUM(CASE WHEN t.status = 'completed' THEN 1 ELSE 0 END) as completed
-                                     FROM users u
-                                     LEFT JOIN tasks t ON u.id = t.assignee_id
-                                     WHERE u.role = 'employee'
-                                     GROUP BY u.id`);
+    const tasksPerEmployee = await getRows(
+      db,
+      `SELECT u.id, u.first_name || ' ' || u.last_name as name,
+              COUNT(t.id)::int as total_tasks,
+              COALESCE(SUM(CASE WHEN t.status = 'completed' THEN 1 ELSE 0 END), 0)::int as completed
+       FROM users u
+       LEFT JOIN tasks t ON u.id = t.assignee_id
+       WHERE u.role = 'employee'
+       GROUP BY u.id
+       ORDER BY name ASC`
+    );
 
     // Recent activity
-    const recentTasks = db.exec(`SELECT t.*, u.first_name || ' ' || u.last_name as assignee_name
-                                 FROM tasks t
-                                 LEFT JOIN users u ON t.assignee_id = u.id
-                                 ORDER BY t.updated_at DESC LIMIT 10`);
+    const recentTasks = await getRows(
+      db,
+      `SELECT t.*, u.first_name || ' ' || u.last_name as assignee_name
+       FROM tasks t
+       LEFT JOIN users u ON t.assignee_id = u.id
+       ORDER BY t.updated_at DESC LIMIT 10`
+    );
 
     const analytics = {
-      totalTasks: totalTasks[0]?.values[0]?.[0] || 0,
-      assignedTasks: assignedTasks[0]?.values[0]?.[0] || 0,
-      pendingTasks: pendingTasks[0]?.values[0]?.[0] || 0,
-      inProgressTasks: inProgressTasks[0]?.values[0]?.[0] || 0,
-      completedTasks: completedTasks[0]?.values[0]?.[0] || 0,
-      tasksByPriority: tasksByPriority[0]?.values.map(row => ({
-        priority: row[0],
-        count: row[1]
-      })) || [],
-      tasksPerEmployee: tasksPerEmployee[0]?.values.map(row => ({
-        id: row[0],
-        name: row[1],
-        totalTasks: row[2],
-        completed: row[3]
-      })) || [],
-      recentTasks: recentTasks[0]?.values.map(row => {
-        const task = {};
-        recentTasks[0].columns.forEach((col, i) => task[col] = row[i]);
-        return task;
-      }) || []
+      totalTasks: totalTasks?.count || 0,
+      assignedTasks: assignedTasks?.count || 0,
+      pendingTasks: pendingTasks?.count || 0,
+      inProgressTasks: inProgressTasks?.count || 0,
+      completedTasks: completedTasks?.count || 0,
+      tasksByPriority,
+      tasksPerEmployee: tasksPerEmployee.map((employee) => ({
+        id: employee.id,
+        name: employee.name,
+        totalTasks: employee.total_tasks,
+        completed: employee.completed
+      })),
+      recentTasks
     };
 
     res.json({ analytics });

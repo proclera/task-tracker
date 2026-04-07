@@ -1,10 +1,5 @@
 const { getDB, saveDB } = require('../config/database');
-
-const mapRow = (columns, row) => {
-  const obj = {};
-  columns.forEach((col, i) => obj[col] = row[i]);
-  return obj;
-};
+const { getRow, getRows } = require('../utils/sql');
 
 exports.getComments = async (req, res) => {
   try {
@@ -15,17 +10,16 @@ exports.getComments = async (req, res) => {
       return res.status(400).json({ error: 'task_id is required' });
     }
 
-    const result = db.exec(`SELECT c.*, u.first_name || ' ' || u.last_name as user_name
-                           FROM comments c
-                           LEFT JOIN users u ON c.user_id = u.id
-                           WHERE c.task_id = ?
-                           ORDER BY c.created_at ASC`, [task_id]);
+    const comments = await getRows(
+      db,
+      `SELECT c.*, u.first_name || ' ' || u.last_name as user_name
+       FROM comments c
+       LEFT JOIN users u ON c.user_id = u.id
+       WHERE c.task_id = ?
+       ORDER BY c.created_at ASC`,
+      [task_id]
+    );
 
-    if (result.length === 0) {
-      return res.json({ comments: [] });
-    }
-
-    const comments = result[0].values.map(row => mapRow(result[0].columns, row));
     res.json({ comments });
   } catch (error) {
     console.error('Get comments error:', error);
@@ -44,24 +38,27 @@ exports.addComment = async (req, res) => {
     }
 
     // Verify task exists
-    const taskCheck = db.exec(`SELECT id FROM tasks WHERE id = ?`, [task_id]);
-    if (taskCheck.length === 0 || taskCheck[0].values.length === 0) {
+    const taskCheck = await getRow(db, `SELECT id FROM tasks WHERE id = ?`, [task_id]);
+    if (!taskCheck) {
       return res.status(404).json({ error: 'Task not found' });
     }
 
-    db.run(`INSERT INTO comments (task_id, user_id, content) VALUES (?, ?, ?)`, [task_id, user_id, content]);
-
-    const result = db.exec('SELECT last_insert_rowid()');
-    const commentId = result[0].values[0][0];
-    saveDB();
+    const insertResult = await db.run(
+      `INSERT INTO comments (task_id, user_id, content) VALUES (?, ?, ?) RETURNING id`,
+      [task_id, user_id, content]
+    );
+    const commentId = insertResult.rows[0].id;
+    await saveDB();
 
     // Get the created comment with user name
-    const commentResult = db.exec(`SELECT c.*, u.first_name || ' ' || u.last_name as user_name
-                                  FROM comments c
-                                  LEFT JOIN users u ON c.user_id = u.id
-                                  WHERE c.id = ?`, [commentId]);
-
-    const comment = mapRow(commentResult[0].columns, commentResult[0].values[0]);
+    const comment = await getRow(
+      db,
+      `SELECT c.*, u.first_name || ' ' || u.last_name as user_name
+       FROM comments c
+       LEFT JOIN users u ON c.user_id = u.id
+       WHERE c.id = ?`,
+      [commentId]
+    );
     res.status(201).json({ comment });
   } catch (error) {
     console.error('Add comment error:', error);
@@ -75,21 +72,17 @@ exports.deleteComment = async (req, res) => {
     const { id } = req.params;
     const user_id = req.user.id;
 
-    const existing = db.exec(`SELECT * FROM comments WHERE id = ?`, [id]);
-    if (existing.length === 0 || existing[0].values.length === 0) {
+    const comment = await getRow(db, `SELECT * FROM comments WHERE id = ?`, [id]);
+    if (!comment) {
       return res.status(404).json({ error: 'Comment not found' });
     }
-
-    // Only comment owner or admin can delete
-    const columns = existing[0].columns;
-    const comment = mapRow(columns, existing[0].values[0]);
 
     if (comment.user_id !== user_id && req.user.role !== 'admin') {
       return res.status(403).json({ error: 'Not authorized to delete this comment' });
     }
 
-    db.run(`DELETE FROM comments WHERE id = ?`, [id]);
-    saveDB();
+    await db.run(`DELETE FROM comments WHERE id = ?`, [id]);
+    await saveDB();
 
     res.json({ message: 'Comment deleted' });
   } catch (error) {
