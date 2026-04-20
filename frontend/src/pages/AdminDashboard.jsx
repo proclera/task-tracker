@@ -2,10 +2,13 @@ import { useState } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { TaskList } from '../components/TaskList';
 import { CreateTaskForm } from '../components/CreateTaskForm';
-import { NotificationBell } from '../components/NotificationBell';
+import { NotificationBellModern } from '../components/NotificationBellModern';
 import { AdminAnalytics } from '../components/AdminAnalytics';
 import { AdminStatsOverview } from '../components/AdminStatsOverview';
 import { AdminAttendanceOverview } from '../components/AdminAttendanceOverview';
+import { AdminReports } from '../components/AdminReports';
+import { AdminGamification } from '../components/AdminGamification';
+import { OverdueTasksAlert } from '../components/OverdueTasksAlert';
 
 export const AdminDashboard = () => {
   const { user, logout } = useAuth();
@@ -39,22 +42,56 @@ export const AdminDashboard = () => {
           >
             Attendance
           </button>
+          <button
+            style={{ ...styles.navBtn, background: view === 'reports' ? '#007bff' : '#6c757d' }}
+            onClick={() => setView('reports')}
+          >
+            Reports
+          </button>
+          <button
+            style={{ ...styles.navBtn, background: view === 'gamification' ? '#007bff' : '#6c757d' }}
+            onClick={() => setView('gamification')}
+          >
+            Gamification
+          </button>
         </div>
         <div style={styles.user}>
-          <NotificationBell />
+          <NotificationBellModern />
           <span>Welcome, {user.firstName}</span>
           <button onClick={logout} style={styles.logoutBtn}>Logout</button>
         </div>
       </header>
       <main style={styles.main}>
+        <OverdueTasksAlert user={user} endpoint={`/tasks?assignee_id=${user.id}`} />
         {view === 'tasks' ? (
           <>
             <AdminStatsOverview refreshToken={refreshKey} />
             <CreateTaskForm onSuccess={handleTaskCreated} />
-            <TaskList user={user} refreshToken={refreshKey} />
+            <TaskList
+              user={user}
+              refreshToken={refreshKey}
+              title="Managed Tasks"
+              subtitle="These are the tasks you created and currently manage."
+              taskFilter={(task) => task.created_by === user.id}
+              emptyMessage="No managed tasks found yet."
+              accent="blue"
+            />
+            <TaskList
+              user={user}
+              refreshToken={refreshKey}
+              endpoint={`/tasks?assignee_id=${user.id}`}
+              title="Assigned To Me"
+              subtitle="These are the tasks assigned to you where you can update progress and share comments."
+              emptyMessage="No tasks are currently assigned to you."
+              accent="amber"
+            />
           </>
         ) : view === 'analytics' ? (
           <AdminAnalytics />
+        ) : view === 'reports' ? (
+          <AdminReports />
+        ) : view === 'gamification' ? (
+          <AdminGamification />
         ) : (
           <AdminAttendanceOverview />
         )}

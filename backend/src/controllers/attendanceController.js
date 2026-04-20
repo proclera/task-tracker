@@ -1,5 +1,7 @@
 const { getDB, saveDB } = require('../config/database');
 const { getRow, getRows } = require('../utils/sql');
+const { isPlainObject, toPositiveInt } = require('../utils/validation');
+const { awardPoints, refreshStreakFromAttendance, awardBadges } = require('../services/gamificationService');
 
 const ATTENDANCE_SELECT = `
   SELECT ar.*, u.first_name || ' ' || u.last_name as user_name, u.email
@@ -63,6 +65,15 @@ exports.checkIn = async (req, res) => {
       [req.user.id, attendanceDate, status]
     );
 
+    await awardPoints(db, req.user.id, {
+      eventType: 'daily_checkin',
+      points: status === 'late' ? 3 : 5,
+      referenceType: 'attendance',
+      referenceId: result.rows[0].id
+    });
+    await refreshStreakFromAttendance(db, req.user.id);
+    await awardBadges(db, req.user.id);
+
     const recordId = result.rows[0].id;
     await saveDB();
 
@@ -76,9 +87,17 @@ exports.checkIn = async (req, res) => {
 
 exports.checkOut = async (req, res) => {
   try {
+    if (!isPlainObject(req.body)) {
+      return res.status(400).json({ error: 'Invalid request body' });
+    }
+
     const db = await getDB();
-    const { id } = req.params;
+    const id = toPositiveInt(req.params.id);
     const workSummary = String(req.body?.work_summary || '').trim();
+
+    if (!id) {
+      return res.status(400).json({ error: 'Invalid attendance id' });
+    }
 
     const attendance = await getRow(
       db,

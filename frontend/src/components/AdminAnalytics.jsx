@@ -1,14 +1,25 @@
 import { useState, useEffect } from 'react';
 import api from '../lib/api';
 import { useToast } from '../context/ToastContext';
+import { useAuth } from '../context/AuthContext';
 
 export const AdminAnalytics = () => {
   const [analytics, setAnalytics] = useState(null);
   const [employees, setEmployees] = useState([]);
+  const [newUser, setNewUser] = useState({
+    firstName: '',
+    lastName: '',
+    email: '',
+    password: '',
+    role: 'employee'
+  });
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [deletingEmployeeId, setDeletingEmployeeId] = useState(null);
+  const [creatingUser, setCreatingUser] = useState(false);
+  const [updatingRoleId, setUpdatingRoleId] = useState(null);
   const { showToast } = useToast();
+  const { user } = useAuth();
 
   useEffect(() => {
     fetchAnalytics();
@@ -33,7 +44,7 @@ export const AdminAnalytics = () => {
 
   const handleDeleteEmployee = async (employee) => {
     const confirmed = window.confirm(
-      `Delete ${employee.first_name} ${employee.last_name}? Assigned tasks will be unassigned and attendance/history records for this employee will be removed.`
+      `Delete ${employee.first_name} ${employee.last_name} (${employee.role})? Assigned tasks will be unassigned and attendance/history records for this user will be removed.`
     );
 
     if (!confirmed) {
@@ -50,6 +61,53 @@ export const AdminAnalytics = () => {
       showToast(message, 'error');
     } finally {
       setDeletingEmployeeId(null);
+    }
+  };
+
+  const handleRoleChange = async (employeeId, nextRole) => {
+    try {
+      setUpdatingRoleId(employeeId);
+      await api.patch(`/employees/${employeeId}/role`, { role: nextRole });
+      showToast(`Role updated to ${nextRole}`, 'success');
+      fetchAnalytics();
+    } catch (err) {
+      const message = err.response?.data?.error || 'Failed to update role';
+      showToast(message, 'error');
+    } finally {
+      setUpdatingRoleId(null);
+    }
+  };
+
+  const handleCreateUser = async (event) => {
+    event.preventDefault();
+
+    if (!newUser.firstName || !newUser.lastName || !newUser.email || !newUser.password) {
+      showToast('Please fill all user fields', 'error');
+      return;
+    }
+
+    if (newUser.password.length < 6) {
+      showToast('Password must be at least 6 characters', 'error');
+      return;
+    }
+
+    try {
+      setCreatingUser(true);
+      await api.post('/employees', newUser);
+      showToast(`${newUser.role === 'admin' ? 'Admin' : 'Employee'} account created`, 'success');
+      setNewUser({
+        firstName: '',
+        lastName: '',
+        email: '',
+        password: '',
+        role: 'employee'
+      });
+      fetchAnalytics();
+    } catch (err) {
+      const message = err.response?.data?.error || 'Failed to create user';
+      showToast(message, 'error');
+    } finally {
+      setCreatingUser(false);
     }
   };
 
@@ -107,10 +165,59 @@ export const AdminAnalytics = () => {
         </div>
 
         <div style={styles.section}>
-          <h3 style={styles.sectionTitle}>Employee Management</h3>
+          <h3 style={styles.sectionTitle}>User Management</h3>
+          <form onSubmit={handleCreateUser} style={styles.createUserForm}>
+            <div style={styles.createUserRow}>
+              <input
+                type="text"
+                value={newUser.firstName}
+                onChange={(event) => setNewUser((current) => ({ ...current, firstName: event.target.value }))}
+                placeholder="First name"
+                style={styles.formInput}
+                required
+              />
+              <input
+                type="text"
+                value={newUser.lastName}
+                onChange={(event) => setNewUser((current) => ({ ...current, lastName: event.target.value }))}
+                placeholder="Last name"
+                style={styles.formInput}
+                required
+              />
+            </div>
+            <input
+              type="email"
+              value={newUser.email}
+              onChange={(event) => setNewUser((current) => ({ ...current, email: event.target.value }))}
+              placeholder="Email address"
+              style={styles.formInput}
+              required
+            />
+            <div style={styles.createUserRow}>
+              <input
+                type="password"
+                value={newUser.password}
+                onChange={(event) => setNewUser((current) => ({ ...current, password: event.target.value }))}
+                placeholder="Temporary password"
+                style={styles.formInput}
+                required
+              />
+              <select
+                value={newUser.role}
+                onChange={(event) => setNewUser((current) => ({ ...current, role: event.target.value }))}
+                style={styles.formInput}
+              >
+                <option value="employee">Employee</option>
+                <option value="admin">Admin</option>
+              </select>
+            </div>
+            <button type="submit" style={styles.createBtn} disabled={creatingUser}>
+              {creatingUser ? 'Creating...' : 'Create User'}
+            </button>
+          </form>
           <div style={styles.employeeList}>
             {employees.length === 0 ? (
-              <div style={styles.empty}>No employees yet</div>
+              <div style={styles.empty}>No users yet</div>
             ) : (
               employees.map((employee) => {
                 const performance = analytics.tasksPerEmployee.find((item) => item.id === employee.id);
@@ -127,16 +234,31 @@ export const AdminAnalytics = () => {
                         <div style={styles.employeeName}>
                           {employee.first_name} {employee.last_name}
                         </div>
-                        <div style={styles.employeeEmail}>{employee.email}</div>
+                        <div style={styles.employeeEmail}>
+                          {employee.email} ({employee.role})
+                        </div>
                       </div>
-                      <button
-                        type="button"
-                        style={styles.deleteBtn}
-                        onClick={() => handleDeleteEmployee(employee)}
-                        disabled={deletingEmployeeId === employee.id}
-                      >
-                        {deletingEmployeeId === employee.id ? 'Deleting...' : 'Delete'}
-                      </button>
+                      {employee.id !== user.id && (
+                        <select
+                          value={employee.role}
+                          onChange={(event) => handleRoleChange(employee.id, event.target.value)}
+                          style={styles.roleSelect}
+                          disabled={updatingRoleId === employee.id}
+                        >
+                          <option value="employee">employee</option>
+                          <option value="admin">admin</option>
+                        </select>
+                      )}
+                      {employee.id !== user.id && (
+                        <button
+                          type="button"
+                          style={styles.deleteBtn}
+                          onClick={() => handleDeleteEmployee(employee)}
+                          disabled={deletingEmployeeId === employee.id}
+                        >
+                          {deletingEmployeeId === employee.id ? 'Deleting...' : 'Delete'}
+                        </button>
+                      )}
                     </div>
                     <div style={styles.employeeStats}>
                       <span>Total: {totalTasks}</span>
@@ -165,7 +287,7 @@ export const AdminAnalytics = () => {
                     ...styles.statusBadge,
                     background: getStatusColor(task.status)
                   }}>{task.status}</span>
-                  <span>{task.assignee_name || 'Unassigned'}</span>
+                  <span>{task.assignee_names || task.assignee_name || 'Unassigned'}</span>
                 </div>
               </div>
             ))
@@ -277,6 +399,32 @@ const styles = {
     flexDirection: 'column',
     gap: '0.5rem'
   },
+  createUserForm: {
+    marginBottom: '1rem',
+    display: 'flex',
+    flexDirection: 'column',
+    gap: '0.6rem'
+  },
+  createUserRow: {
+    display: 'grid',
+    gridTemplateColumns: '1fr 1fr',
+    gap: '0.5rem'
+  },
+  formInput: {
+    padding: '0.6rem 0.7rem',
+    borderRadius: '8px',
+    border: '1px solid #d3d9e4'
+  },
+  createBtn: {
+    alignSelf: 'flex-start',
+    padding: '0.5rem 0.9rem',
+    border: 'none',
+    borderRadius: '8px',
+    background: '#007bff',
+    color: 'white',
+    fontWeight: 'bold',
+    cursor: 'pointer'
+  },
   empty: {
     padding: '1rem',
     textAlign: 'center',
@@ -316,6 +464,12 @@ const styles = {
     color: 'white',
     cursor: 'pointer',
     fontWeight: 'bold'
+  },
+  roleSelect: {
+    padding: '0.45rem 0.6rem',
+    border: '1px solid #d3d9e4',
+    borderRadius: '8px',
+    background: 'white'
   },
   activityList: {
     display: 'flex',

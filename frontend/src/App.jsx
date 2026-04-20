@@ -1,7 +1,6 @@
 import { Routes, Route, Navigate } from 'react-router-dom';
 import { useAuth } from './context/AuthContext';
 import { LoginPage } from './pages/LoginPage';
-import { RegisterPage } from './pages/RegisterPage';
 import { AdminDashboard } from './pages/AdminDashboard';
 import { EmployeeDashboard } from './pages/EmployeeDashboard';
 import { ProtectedRoute } from './components/ProtectedRoute';
@@ -29,7 +28,7 @@ function App() {
         />
         <Route
           path="/register"
-          element={user ? <Navigate to={user.role === 'admin' ? '/admin' : '/employee'} /> : <RegisterPage />}
+          element={<Navigate to="/login" replace />}
         />
         <Route
           path="/admin"

@@ -12,7 +12,12 @@ exports.requireAuth = (req, res, next) => {
   const token = authHeader.split(' ')[1];
 
   try {
-    const decoded = jwt.verify(token, JWT_SECRET);
+    const decoded = jwt.verify(token, JWT_SECRET, { algorithms: ['HS256'] });
+
+    if (!decoded?.id || !decoded?.role) {
+      return res.status(401).json({ error: 'Invalid token payload' });
+    }
+
     req.user = decoded;
     next();
   } catch (error) {

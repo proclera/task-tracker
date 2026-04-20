@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Link, useLocation, useNavigate } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 
 export const LoginPage = () => {
@@ -71,10 +71,6 @@ export const LoginPage = () => {
             {loading ? 'Signing in...' : 'Sign In'}
           </button>
         </form>
-
-        <p style={styles.link}>
-          Don't have an account? <Link to="/register">Register</Link>
-        </p>
       </div>
     </div>
   );
@@ -141,10 +137,5 @@ const styles = {
     border: 'none',
     borderRadius: '4px',
     cursor: 'pointer'
-  },
-  link: {
-    textAlign: 'center',
-    marginTop: '1rem',
-    color: '#666'
   }
 };

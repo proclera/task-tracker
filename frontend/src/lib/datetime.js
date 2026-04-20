@@ -29,3 +29,20 @@ export const formatServerTime = (value, options) => {
   const date = parseServerDate(value);
   return date ? date.toLocaleTimeString(undefined, options) : '';
 };
+
+export const formatDateLabel = (value, options) => {
+  const date = parseServerDate(value);
+  return date ? date.toLocaleDateString(undefined, options) : '';
+};
+
+export const isDateOverdue = (value) => {
+  const date = parseServerDate(value);
+  if (!date) {
+    return false;
+  }
+
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  date.setHours(0, 0, 0, 0);
+  return date < today;
+};

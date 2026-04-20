@@ -1,8 +1,9 @@
-import { useState } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { TaskList } from '../components/TaskList';
-import { NotificationBell } from '../components/NotificationBell';
+import { NotificationBellModern } from '../components/NotificationBellModern';
 import { AttendancePanel } from '../components/AttendancePanel';
+import { GamificationPanel } from '../components/GamificationPanel';
+import { OverdueTasksAlert } from '../components/OverdueTasksAlert';
 
 export const EmployeeDashboard = () => {
   const { user, logout } = useAuth();
@@ -12,13 +13,15 @@ export const EmployeeDashboard = () => {
       <header style={styles.header}>
         <h1>Employee Dashboard</h1>
         <div style={styles.user}>
-          <NotificationBell />
+          <NotificationBellModern />
           <span>Welcome, {user.firstName}</span>
           <button onClick={logout} style={styles.logoutBtn}>Logout</button>
         </div>
       </header>
       <main style={styles.main}>
+        <OverdueTasksAlert user={user} endpoint="/tasks/my" />
         <AttendancePanel />
+        <GamificationPanel />
         <TaskList user={user} />
       </main>
     </div>

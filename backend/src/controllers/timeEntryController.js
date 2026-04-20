@@ -1,5 +1,7 @@
 const { getDB, saveDB } = require('../config/database');
 const { getRow, getRows } = require('../utils/sql');
+const { isPlainObject, toPositiveInt, normalizeOptionalText } = require('../utils/validation');
+const { awardPoints, awardBadges } = require('../services/gamificationService');
 
 const TIME_ENTRY_SELECT = `
   SELECT te.*, t.title as task_title, u.first_name || ' ' || u.last_name as user_name
@@ -11,7 +13,11 @@ const TIME_ENTRY_SELECT = `
 const getTimeEntriesForTask = async (req, res) => {
   try {
     const db = await getDB();
-    const { taskId } = req.params;
+    const taskId = toPositiveInt(req.params.taskId);
+
+    if (!taskId) {
+      return res.status(400).json({ error: 'Invalid task id' });
+    }
 
     const task = await getRow(db, 'SELECT id FROM tasks WHERE id = ?', [taskId]);
     if (!task) {
@@ -50,20 +56,40 @@ const getActiveTimeEntry = async (req, res) => {
 
 const startTimeEntry = async (req, res) => {
   try {
+    if (!isPlainObject(req.body)) {
+      return res.status(400).json({ error: 'Invalid request body' });
+    }
+
     const db = await getDB();
-    const { task_id, note } = req.body;
+    const task_id = toPositiveInt(req.body.task_id);
+    const noteCheck = normalizeOptionalText(req.body.note, { maxLength: 500 });
     const userId = req.user.id;
 
     if (!task_id) {
       return res.status(400).json({ error: 'task_id is required' });
     }
 
-    const task = await getRow(db, 'SELECT id, assignee_id FROM tasks WHERE id = ?', [task_id]);
+    if (noteCheck.error) {
+      return res.status(400).json({ error: noteCheck.error });
+    }
+
+    const task = await getRow(
+      db,
+      `SELECT t.id,
+              EXISTS(
+                SELECT 1
+                FROM task_assignments ta
+                WHERE ta.task_id = t.id AND ta.user_id = ?
+              ) as is_assigned
+       FROM tasks t
+       WHERE t.id = ?`,
+      [userId, task_id]
+    );
     if (!task) {
       return res.status(404).json({ error: 'Task not found' });
     }
 
-    if (req.user.role !== 'admin' && task.assignee_id !== userId) {
+    if (req.user.role !== 'admin' && !task.is_assigned) {
       return res.status(403).json({ error: 'You can only track time for tasks assigned to you' });
     }
 
@@ -79,7 +105,7 @@ const startTimeEntry = async (req, res) => {
 
     const result = await db.run(
       'INSERT INTO time_entries (task_id, user_id, note) VALUES (?, ?, ?) RETURNING id',
-      [task_id, userId, note?.trim() || null]
+      [task_id, userId, noteCheck.value ?? null]
     );
 
     const entryId = result.rows[0].id;
@@ -95,10 +121,22 @@ const startTimeEntry = async (req, res) => {
 
 const stopTimeEntry = async (req, res) => {
   try {
+    if (!isPlainObject(req.body)) {
+      return res.status(400).json({ error: 'Invalid request body' });
+    }
+
     const db = await getDB();
-    const { id } = req.params;
-    const { note } = req.body;
+    const id = toPositiveInt(req.params.id);
+    const noteCheck = normalizeOptionalText(req.body.note, { maxLength: 500 });
     const userId = req.user.id;
+
+    if (!id) {
+      return res.status(400).json({ error: 'Invalid time entry id' });
+    }
+
+    if (noteCheck.error) {
+      return res.status(400).json({ error: noteCheck.error });
+    }
 
     const entry = await getRow(
       db,
@@ -122,8 +160,18 @@ const stopTimeEntry = async (req, res) => {
       `UPDATE time_entries
        SET end_time = CURRENT_TIMESTAMP, duration_minutes = ?, note = ?
        WHERE id = ?`,
-      [durationMinutes, note?.trim() || entry.note || null, id]
+      [durationMinutes, (noteCheck.value ?? entry.note) || null, id]
     );
+
+    if (durationMinutes >= 30) {
+      await awardPoints(db, userId, {
+        eventType: 'focus_session',
+        points: 2,
+        referenceType: 'time_entry',
+        referenceId: id
+      });
+      await awardBadges(db, userId);
+    }
 
     await saveDB();
 

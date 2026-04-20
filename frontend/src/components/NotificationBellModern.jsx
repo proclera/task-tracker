@@ -1,14 +1,15 @@
-import { useState, useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import api from '../lib/api';
 import { formatServerDateTime } from '../lib/datetime';
 
-export const NotificationBell = () => {
+export const NotificationBellModern = () => {
   const [notifications, setNotifications] = useState([]);
   const [unreadCount, setUnreadCount] = useState(0);
   const [showDropdown, setShowDropdown] = useState(false);
 
   useEffect(() => {
     fetchNotifications();
+    fetchUnreadCount();
     const interval = setInterval(fetchUnreadCount, 30000);
     return () => clearInterval(interval);
   }, []);
@@ -51,19 +52,25 @@ export const NotificationBell = () => {
     }
   };
 
-  const getTypeIcon = (type) => {
+  const getTypeLabel = (type) => {
     switch (type) {
-      case 'task': return '📋';
-      case 'update': return '🔄';
-      case 'mention': return '💬';
-      default: return '🔔';
+      case 'task':
+        return '[Task]';
+      case 'update':
+        return '[Update]';
+      case 'mention':
+        return '[Note]';
+      case 'overdue':
+        return '[Due]';
+      default:
+        return '[Bell]';
     }
   };
 
   return (
     <div style={styles.container}>
-      <button style={styles.bell} onClick={() => setShowDropdown(!showDropdown)}>
-        🔔
+      <button type="button" style={styles.bell} onClick={() => setShowDropdown((current) => !current)}>
+        <span>Notifications</span>
         {unreadCount > 0 && <span style={styles.badge}>{unreadCount}</span>}
       </button>
 
@@ -72,7 +79,7 @@ export const NotificationBell = () => {
           <div style={styles.header}>
             <h4 style={styles.headerTitle}>Notifications</h4>
             {unreadCount > 0 && (
-              <button style={styles.markAllBtn} onClick={markAllAsRead}>
+              <button type="button" style={styles.markAllBtn} onClick={markAllAsRead}>
                 Mark all read
               </button>
             )}
@@ -82,23 +89,21 @@ export const NotificationBell = () => {
             {notifications.length === 0 ? (
               <div style={styles.empty}>No notifications</div>
             ) : (
-              notifications.map(notif => (
+              notifications.map((notification) => (
                 <div
-                  key={notif.id}
+                  key={notification.id}
                   style={{
                     ...styles.item,
-                    background: notif.is_read ? '#f5f5f5' : 'white'
+                    background: notification.is_read ? '#f5f5f5' : 'white'
                   }}
-                  onClick={() => !notif.is_read && markAsRead(notif.id)}
+                  onClick={() => !notification.is_read && markAsRead(notification.id)}
                 >
-                  <span style={styles.icon}>{getTypeIcon(notif.type)}</span>
-                    <div style={styles.content}>
-                      <div style={styles.title}>{notif.title}</div>
-                      <div style={styles.message}>{notif.message}</div>
-                      <div style={styles.time}>
-                        {formatServerDateTime(notif.created_at)}
-                      </div>
-                    </div>
+                  <span style={styles.icon}>{getTypeLabel(notification.type)}</span>
+                  <div style={styles.content}>
+                    <div style={styles.title}>{notification.title}</div>
+                    <div style={styles.message}>{notification.message}</div>
+                    <div style={styles.time}>{formatServerDateTime(notification.created_at)}</div>
+                  </div>
                 </div>
               ))
             )}
@@ -114,53 +119,59 @@ const styles = {
     position: 'relative'
   },
   bell: {
-    background: 'none',
-    border: 'none',
-    fontSize: '1.5rem',
+    background: 'white',
+    border: '1px solid #d7deea',
+    borderRadius: '999px',
+    fontSize: '0.92rem',
     cursor: 'pointer',
-    padding: '0.5rem',
-    position: 'relative'
+    padding: '0.55rem 0.9rem',
+    position: 'relative',
+    display: 'inline-flex',
+    alignItems: 'center',
+    gap: '0.5rem',
+    color: '#274266',
+    fontWeight: 700
   },
   badge: {
-    position: 'absolute',
-    top: '0',
-    right: '0',
     background: '#dc3545',
     color: 'white',
-    borderRadius: '50%',
-    fontSize: '0.7rem',
-    padding: '0.2rem 0.4rem',
+    borderRadius: '999px',
+    fontSize: '0.72rem',
+    padding: '0.18rem 0.42rem',
     minWidth: '18px',
     textAlign: 'center'
   },
   dropdown: {
     position: 'absolute',
-    top: '100%',
+    top: 'calc(100% + 10px)',
     right: '0',
     width: '350px',
     background: 'white',
-    borderRadius: '8px',
-    boxShadow: '0 4px 12px rgba(0,0,0,0.15)',
+    borderRadius: '14px',
+    boxShadow: '0 18px 42px rgba(31, 45, 76, 0.18)',
     zIndex: 1000,
-    overflow: 'hidden'
+    overflow: 'hidden',
+    border: '1px solid #e3e8f2'
   },
   header: {
     display: 'flex',
     justifyContent: 'space-between',
     alignItems: 'center',
-    padding: '0.75rem 1rem',
-    borderBottom: '1px solid #eee'
+    padding: '0.9rem 1rem',
+    borderBottom: '1px solid #eef2f7'
   },
   headerTitle: {
     margin: 0,
-    fontSize: '1rem'
+    fontSize: '1rem',
+    color: '#183153'
   },
   markAllBtn: {
     background: 'none',
     border: 'none',
-    color: '#007bff',
+    color: '#1e63d4',
     cursor: 'pointer',
-    fontSize: '0.85rem'
+    fontSize: '0.85rem',
+    fontWeight: 700
   },
   list: {
     maxHeight: '400px',
@@ -174,12 +185,15 @@ const styles = {
   item: {
     display: 'flex',
     gap: '0.75rem',
-    padding: '0.75rem 1rem',
-    borderBottom: '1px solid #eee',
+    padding: '0.9rem 1rem',
+    borderBottom: '1px solid #eef2f7',
     cursor: 'pointer'
   },
   icon: {
-    fontSize: '1.25rem'
+    fontSize: '0.74rem',
+    fontWeight: 800,
+    color: '#667a98',
+    paddingTop: '0.2rem'
   },
   content: {
     flex: 1
@@ -187,12 +201,14 @@ const styles = {
   title: {
     fontWeight: 'bold',
     fontSize: '0.9rem',
-    marginBottom: '0.25rem'
+    marginBottom: '0.25rem',
+    color: '#183153'
   },
   message: {
     fontSize: '0.85rem',
     color: '#666',
-    marginBottom: '0.25rem'
+    marginBottom: '0.25rem',
+    lineHeight: 1.45
   },
   time: {
     fontSize: '0.75rem',

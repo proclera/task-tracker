@@ -1,7 +1,7 @@
 # Project Memory Log
 
 ## Last Updated:
-2026-04-07
+2026-04-08
 
 ## Completed Features
 - Phase 1: Authentication System
@@ -25,17 +25,18 @@
   - Admin analytics API and dashboard
   - Basic performance tracking through admin analytics and employee task completion stats
   - Attendance system with employee check-in/check-out, history, and admin attendance overview
+  - Reports generation with admin summary dashboard, employee performance table, recent activity feed, and CSV export
   - Database configuration aligned around the top-level `database/` folder
   - Backend env example aligned with `DATABASE_PATH`
   - Employee redirect for task routes corrected to `/api/tasks/my`
+  - Backend time entry API exists with start/stop timer endpoints and task history support
 
 ## In Progress
 - Phase 3 completion and project hardening
 - Project checklist reconciliation against the real codebase
 
 ## Pending Tasks
-- Build time tracking system
-- Add reports generation
+- Surface time tracking in the frontend dashboards
 - Add file uploads
 - Add gamification
 - Harden backend validation and query safety
@@ -45,4 +46,4 @@
 - Docs were previously out of sync with the real implementation
 
 ## Next Step
-Continue Phase 3 from the next real pending feature, starting with reports generation.
+Continue Phase 3 from the next real pending feature, starting with frontend time tracking.

@@ -1,5 +1,6 @@
 const VALID_STATUSES = ['pending', 'in_progress', 'completed'];
 const VALID_PRIORITIES = ['low', 'medium', 'high', 'urgent'];
+const DATE_REGEX = /^\d{4}-\d{2}-\d{2}$/;
 
 const normalizeOptionalText = (value) => {
   if (value === undefined) {
@@ -26,6 +27,37 @@ const normalizeAssigneeId = (value) => {
   return Number.isInteger(parsed) && parsed > 0 ? parsed : NaN;
 };
 
+const normalizeAssigneeIds = (value) => {
+  if (value === undefined) {
+    return undefined;
+  }
+
+  if (value === null || value === '') {
+    return [];
+  }
+
+  if (!Array.isArray(value)) {
+    return null;
+  }
+
+  const normalized = [];
+  const seen = new Set();
+
+  for (const item of value) {
+    const parsed = normalizeAssigneeId(item);
+    if (Number.isNaN(parsed)) {
+      return null;
+    }
+
+    if (parsed !== null && !seen.has(parsed)) {
+      seen.add(parsed);
+      normalized.push(parsed);
+    }
+  }
+
+  return normalized;
+};
+
 const validateTaskPayload = (payload, { partial = false } = {}) => {
   const errors = [];
   const task = {};
@@ -34,13 +66,20 @@ const validateTaskPayload = (payload, { partial = false } = {}) => {
   if (!partial || payload.title !== undefined) {
     if (!normalizedTitle) {
       errors.push('Title is required');
+    } else if (normalizedTitle.length > 160) {
+      errors.push('Title must be 160 characters or less');
     } else {
       task.title = normalizedTitle;
     }
   }
 
   if (payload.description !== undefined) {
-    task.description = normalizeOptionalText(payload.description) ?? '';
+    const normalizedDescription = normalizeOptionalText(payload.description) ?? '';
+    if (normalizedDescription && normalizedDescription.length > 2000) {
+      errors.push('Description must be 2000 characters or less');
+    } else {
+      task.description = normalizedDescription;
+    }
   }
 
   if (payload.status !== undefined) {
@@ -62,8 +101,8 @@ const validateTaskPayload = (payload, { partial = false } = {}) => {
   if (payload.due_date !== undefined) {
     const dueDate = normalizeOptionalText(payload.due_date);
 
-    if (dueDate && Number.isNaN(Date.parse(dueDate))) {
-      errors.push('Invalid due date');
+    if (dueDate && !DATE_REGEX.test(dueDate)) {
+      errors.push('Invalid due date format. Use YYYY-MM-DD');
     } else {
       task.due_date = dueDate || null;
     }
@@ -79,10 +118,24 @@ const validateTaskPayload = (payload, { partial = false } = {}) => {
     }
   }
 
+  if (payload.assignee_ids !== undefined) {
+    const assigneeIds = normalizeAssigneeIds(payload.assignee_ids);
+
+    if (assigneeIds === null) {
+      errors.push('Invalid assignee_ids');
+    } else {
+      task.assignee_ids = assigneeIds;
+      task.assignee_id = assigneeIds[0] ?? null;
+    }
+  }
+
   if (!partial) {
     if (task.description === undefined) task.description = '';
     if (task.status === undefined) task.status = 'pending';
     if (task.priority === undefined) task.priority = 'medium';
+    if (task.assignee_ids === undefined) {
+      task.assignee_ids = task.assignee_id ? [task.assignee_id] : [];
+    }
     if (task.assignee_id === undefined) task.assignee_id = null;
     if (task.due_date === undefined) task.due_date = null;
   }
@@ -91,8 +144,24 @@ const validateTaskPayload = (payload, { partial = false } = {}) => {
 };
 
 const validateAssignmentPayload = (payload) => {
-  if (!Object.prototype.hasOwnProperty.call(payload, 'assignee_id')) {
-    return { errors: ['assignee_id is required'], assignment: null };
+  if (!Object.prototype.hasOwnProperty.call(payload, 'assignee_ids') &&
+      !Object.prototype.hasOwnProperty.call(payload, 'assignee_id')) {
+    return { errors: ['assignee_ids is required'], assignment: null };
+  }
+
+  if (Object.prototype.hasOwnProperty.call(payload, 'assignee_ids')) {
+    const assigneeIds = normalizeAssigneeIds(payload.assignee_ids);
+    if (assigneeIds === null) {
+      return { errors: ['Invalid assignee_ids'], assignment: null };
+    }
+
+    return {
+      errors: [],
+      assignment: {
+        assignee_ids: assigneeIds,
+        assignee_id: assigneeIds[0] ?? null
+      }
+    };
   }
 
   const assigneeId = normalizeAssigneeId(payload.assignee_id);
@@ -103,7 +172,8 @@ const validateAssignmentPayload = (payload) => {
   return {
     errors: [],
     assignment: {
-      assignee_id: assigneeId
+      assignee_id: assigneeId,
+      assignee_ids: assigneeId ? [assigneeId] : []
     }
   };
 };

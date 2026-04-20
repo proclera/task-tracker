@@ -23,3 +23,5 @@ backend/database/*.db
 
 .DS_Store
 Thumbs.db
+
+.vercel

@@ -39,7 +39,7 @@ export const AttendancePanel = () => {
     try {
       setSubmitting(true);
       setError('');
-      const response = await api.post('/attendance/check-in');
+      const response = await api.post('/attendance/check-in', {});
       setToday(response.data.attendance);
       showToast('Checked in successfully', 'success');
       loadAttendance();

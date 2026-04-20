@@ -7,7 +7,7 @@ export const CreateTaskForm = ({ onSuccess }) => {
     title: '',
     description: '',
     priority: 'medium',
-    assignee_id: '',
+    assignee_ids: [],
     due_date: ''
   });
   const [employees, setEmployees] = useState([]);
@@ -37,6 +37,19 @@ export const CreateTaskForm = ({ onSuccess }) => {
     setFormData({ ...formData, [e.target.name]: e.target.value });
   };
 
+  const toggleAssignee = (employeeId) => {
+    setFormData((current) => {
+      const alreadySelected = current.assignee_ids.includes(employeeId);
+
+      return {
+        ...current,
+        assignee_ids: alreadySelected
+          ? current.assignee_ids.filter((id) => id !== employeeId)
+          : [...current.assignee_ids, employeeId]
+      };
+    });
+  };
+
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError('');
@@ -45,14 +58,14 @@ export const CreateTaskForm = ({ onSuccess }) => {
     try {
       await api.post('/tasks', {
         ...formData,
-        assignee_id: formData.assignee_id || null,
+        assignee_ids: formData.assignee_ids,
         due_date: formData.due_date || null
       });
       setFormData({
         title: '',
         description: '',
         priority: 'medium',
-        assignee_id: '',
+        assignee_ids: [],
         due_date: ''
       });
       showToast('Task created successfully', 'success');
@@ -119,19 +132,37 @@ export const CreateTaskForm = ({ onSuccess }) => {
           />
         </div>
 
-        <select
-          name="assignee_id"
-          value={formData.assignee_id}
-          onChange={handleChange}
-          style={styles.select}
-        >
-          <option value="">Select Assignee (optional)</option>
-          {employees.map(emp => (
-            <option key={emp.id} value={emp.id}>
-              {emp.first_name} {emp.last_name}
-            </option>
-          ))}
-        </select>
+        <div style={styles.assignmentPanel}>
+          <div style={styles.assignmentHeader}>
+            <span style={styles.assignmentTitle}>Assign team members</span>
+            <span style={styles.assignmentCount}>
+              {formData.assignee_ids.length} selected
+            </span>
+          </div>
+
+          <div style={styles.assignmentGrid}>
+            {employees.map((emp) => {
+              const selected = formData.assignee_ids.includes(emp.id);
+
+              return (
+                <label
+                  key={emp.id}
+                  style={{
+                    ...styles.assigneeOption,
+                    ...(selected ? styles.assigneeOptionSelected : {})
+                  }}
+                >
+                  <input
+                    type="checkbox"
+                    checked={selected}
+                    onChange={() => toggleAssignee(emp.id)}
+                  />
+                  <span>{emp.first_name} {emp.last_name}</span>
+                </label>
+              );
+            })}
+          </div>
+        </div>
 
         <button type="submit" style={styles.button} disabled={loading}>
           {loading ? 'Creating task...' : 'Create Task'}
@@ -205,6 +236,46 @@ const styles = {
   row: {
     display: 'flex',
     gap: '1rem'
+  },
+  assignmentPanel: {
+    border: '1px solid #d4dceb',
+    borderRadius: '16px',
+    padding: '0.9rem',
+    background: '#f8fbff'
+  },
+  assignmentHeader: {
+    display: 'flex',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    gap: '1rem',
+    marginBottom: '0.75rem'
+  },
+  assignmentTitle: {
+    fontWeight: 700,
+    color: '#183153'
+  },
+  assignmentCount: {
+    fontSize: '0.85rem',
+    color: '#62728c'
+  },
+  assignmentGrid: {
+    display: 'grid',
+    gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))',
+    gap: '0.6rem'
+  },
+  assigneeOption: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '0.55rem',
+    padding: '0.7rem 0.8rem',
+    borderRadius: '12px',
+    background: 'white',
+    border: '1px solid #d4dceb',
+    cursor: 'pointer'
+  },
+  assigneeOptionSelected: {
+    borderColor: '#3a82ff',
+    boxShadow: '0 0 0 1px rgba(58, 130, 255, 0.18)'
   },
   button: {
     padding: '0.75rem',
