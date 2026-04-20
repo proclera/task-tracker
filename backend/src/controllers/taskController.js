@@ -83,6 +83,23 @@ const getUserDisplayName = async (db, userId) => {
   return `${user?.first_name || ''} ${user?.last_name || ''}`.trim() || 'Admin';
 };
 
+const canUserAccessTask = async (db, taskId, user) => {
+  if (user.role === 'admin') {
+    return true;
+  }
+
+  const assignment = await getRow(
+    db,
+    `SELECT 1
+     FROM task_assignments
+     WHERE task_id = ? AND user_id = ?
+     LIMIT 1`,
+    [taskId, user.id]
+  );
+
+  return Boolean(assignment);
+};
+
 const getAssignableUsers = async (db, assigneeIds) => {
   if (!Array.isArray(assigneeIds) || assigneeIds.length === 0) {
     return [];
@@ -385,6 +402,10 @@ exports.getTaskById = async (req, res) => {
     const task = await getTaskByIdFromDb(db, id);
     if (!task) {
       return res.status(404).json({ error: 'Task not found' });
+    }
+
+    if (!(await canUserAccessTask(db, id, req.user))) {
+      return res.status(403).json({ error: 'Not authorized to view this task' });
     }
 
     res.json({ task: normalizeTaskForViewer(task, req.user.id) });

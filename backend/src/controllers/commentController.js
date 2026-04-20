@@ -3,6 +3,23 @@ const { getRow, getRows } = require('../utils/sql');
 const { isPlainObject, toPositiveInt, normalizeOptionalText } = require('../utils/validation');
 const { createNotification } = require('./notificationController');
 
+const canUserAccessTask = async (db, taskId, user) => {
+  if (user.role === 'admin') {
+    return true;
+  }
+
+  const assignment = await getRow(
+    db,
+    `SELECT 1
+     FROM task_assignments
+     WHERE task_id = ? AND user_id = ?
+     LIMIT 1`,
+    [taskId, user.id]
+  );
+
+  return Boolean(assignment);
+};
+
 exports.getComments = async (req, res) => {
   try {
     const db = await getDB();
@@ -10,6 +27,10 @@ exports.getComments = async (req, res) => {
 
     if (!taskId) {
       return res.status(400).json({ error: 'task_id is required' });
+    }
+
+    if (!(await canUserAccessTask(db, taskId, req.user))) {
+      return res.status(403).json({ error: 'Not authorized to view comments for this task' });
     }
 
     const comments = await getRows(
@@ -56,6 +77,10 @@ exports.addComment = async (req, res) => {
     );
     if (!taskCheck) {
       return res.status(404).json({ error: 'Task not found' });
+    }
+
+    if (!(await canUserAccessTask(db, taskId, req.user))) {
+      return res.status(403).json({ error: 'Not authorized to comment on this task' });
     }
 
     const insertResult = await db.run(
@@ -124,6 +149,10 @@ exports.deleteComment = async (req, res) => {
     const comment = await getRow(db, `SELECT * FROM comments WHERE id = ?`, [id]);
     if (!comment) {
       return res.status(404).json({ error: 'Comment not found' });
+    }
+
+    if (!(await canUserAccessTask(db, comment.task_id, req.user))) {
+      return res.status(403).json({ error: 'Not authorized to modify comments for this task' });
     }
 
     if (comment.user_id !== user_id && req.user.role !== 'admin') {
