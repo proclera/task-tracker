@@ -62,6 +62,10 @@ export const NotificationBellModern = () => {
         return '[Note]';
       case 'overdue':
         return '[Due]';
+      case 'goal_off_track':
+        return '[Goal]';
+      case 'goal_missed':
+        return '[Alert]';
       default:
         return '[Bell]';
     }

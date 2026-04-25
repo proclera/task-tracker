@@ -18,7 +18,7 @@ router.use(requireAuth);
 
 // All tasks - admin sees all, employee sees their tasks only
 router.get('/', (req, res, next) => {
-  if (req.user.role === 'admin') {
+  if (req.user.role === 'admin' || req.user.role === 'manager') {
     return next();
   }
   return res.redirect('/api/tasks/my');
@@ -34,16 +34,16 @@ router.get('/analytics', requireRole('admin'), getAnalytics);
 router.get('/:id', getTaskById);
 
 // Create task (admin only)
-router.post('/', requireRole('admin'), createTask);
+router.post('/', requireRole('admin', 'manager'), createTask);
 
 // Full update task (admin only)
-router.put('/:id', requireRole('admin'), updateTask);
+router.put('/:id', requireRole('admin', 'manager'), updateTask);
 
 // Assign or unassign task (admin only)
-router.patch('/:id/assign', requireRole('admin'), assignTask);
+router.patch('/:id/assign', requireRole('admin', 'manager'), assignTask);
 
 // Delete task (admin only)
-router.delete('/:id', requireRole('admin'), deleteTask);
+router.delete('/:id', requireRole('admin', 'manager'), deleteTask);
 
 // Update own task status (employee updates their assigned task's status)
 router.patch('/:id/status', updateMyTaskStatus);

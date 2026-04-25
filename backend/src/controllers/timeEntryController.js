@@ -2,6 +2,7 @@ const { getDB, saveDB } = require('../config/database');
 const { getRow, getRows } = require('../utils/sql');
 const { isPlainObject, toPositiveInt, normalizeOptionalText } = require('../utils/validation');
 const { awardPoints, awardBadges } = require('../services/gamificationService');
+const { canUserAccessTask } = require('../utils/permissions');
 
 const TIME_ENTRY_SELECT = `
   SELECT te.*, t.title as task_title, u.first_name || ' ' || u.last_name as user_name
@@ -22,6 +23,10 @@ const getTimeEntriesForTask = async (req, res) => {
     const task = await getRow(db, 'SELECT id FROM tasks WHERE id = ?', [taskId]);
     if (!task) {
       return res.status(404).json({ error: 'Task not found' });
+    }
+
+    if (!(await canUserAccessTask(db, taskId, req.user))) {
+      return res.status(403).json({ error: 'Not authorized to view time entries for this task' });
     }
 
     const entries = await getRows(

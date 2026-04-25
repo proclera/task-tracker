@@ -16,6 +16,12 @@ export const RegisterPage = () => {
   const { register } = useAuth();
   const navigate = useNavigate();
 
+  const getDashboardRoute = (role) => {
+    if (role === 'admin') return '/admin';
+    if (role === 'manager') return '/manager';
+    return '/employee';
+  };
+
   const handleChange = (e) => {
     setFormData({ ...formData, [e.target.name]: e.target.value });
   };
@@ -44,7 +50,7 @@ export const RegisterPage = () => {
         formData.firstName,
         formData.lastName
       );
-      navigate(user.role === 'admin' ? '/admin' : '/employee');
+      navigate(getDashboardRoute(user.role));
     } catch (err) {
       setError(err.response?.data?.error || 'Registration failed');
     } finally {

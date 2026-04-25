@@ -8,6 +8,7 @@ import { AdminStatsOverview } from '../components/AdminStatsOverview';
 import { AdminAttendanceOverview } from '../components/AdminAttendanceOverview';
 import { AdminReports } from '../components/AdminReports';
 import { AdminGamification } from '../components/AdminGamification';
+import { AdminGoalsPanel } from '../components/AdminGoalsPanel';
 import { OverdueTasksAlert } from '../components/OverdueTasksAlert';
 
 export const AdminDashboard = () => {
@@ -35,6 +36,12 @@ export const AdminDashboard = () => {
             onClick={() => setView('analytics')}
           >
             Analytics
+          </button>
+          <button
+            style={{ ...styles.navBtn, background: view === 'goals' ? '#007bff' : '#6c757d' }}
+            onClick={() => setView('goals')}
+          >
+            Goals
           </button>
           <button
             style={{ ...styles.navBtn, background: view === 'attendance' ? '#007bff' : '#6c757d' }}
@@ -90,6 +97,8 @@ export const AdminDashboard = () => {
           <AdminAnalytics />
         ) : view === 'reports' ? (
           <AdminReports />
+        ) : view === 'goals' ? (
+          <AdminGoalsPanel />
         ) : view === 'gamification' ? (
           <AdminGamification />
         ) : (

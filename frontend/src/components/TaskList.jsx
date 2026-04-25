@@ -23,12 +23,13 @@ export const TaskList = ({
   const [priorityFilter, setPriorityFilter] = useState('all');
   const [dueFilter, setDueFilter] = useState('all');
   const { showToast } = useToast();
+  const hasManagementView = user.role === 'admin' || user.role === 'manager';
 
   const fetchTasks = async () => {
     try {
       setLoading(true);
       setError('');
-      const resolvedEndpoint = endpoint || (user.role === 'admin' ? '/tasks' : '/tasks/my');
+      const resolvedEndpoint = endpoint || (hasManagementView ? '/tasks' : '/tasks/my');
       const response = await api.get(resolvedEndpoint);
       const fetchedTasks = response.data.tasks || [];
       setTasks(typeof taskFilter === 'function' ? fetchedTasks.filter(taskFilter) : fetchedTasks);
@@ -118,7 +119,7 @@ export const TaskList = ({
         <div style={styles.headerRow}>
           <div>
             <h2 style={{ ...styles.title, color: ACCENT_STYLES[accent]?.titleColor || styles.title.color }}>
-              {title || (user.role === 'admin' ? 'All Tasks' : 'My Tasks')}
+              {title || (hasManagementView ? 'All Tasks' : 'My Tasks')}
             </h2>
             <p style={styles.subtitle}>Fetching the latest task activity.</p>
           </div>
@@ -143,10 +144,10 @@ export const TaskList = ({
       <div style={styles.headerRow}>
         <div>
           <h2 style={{ ...styles.title, color: ACCENT_STYLES[accent]?.titleColor || styles.title.color }}>
-            {title || (user.role === 'admin' ? 'All Tasks' : 'My Tasks')}
+            {title || (hasManagementView ? 'All Tasks' : 'My Tasks')}
           </h2>
           <p style={styles.subtitle}>
-            {subtitle || (user.role === 'admin'
+            {subtitle || (hasManagementView
               ? 'Open any card to edit details, assign ownership, or delete work.'
               : 'Track your assigned work and update progress as you move.')}
           </p>

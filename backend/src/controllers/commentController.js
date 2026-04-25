@@ -2,23 +2,7 @@ const { getDB, saveDB } = require('../config/database');
 const { getRow, getRows } = require('../utils/sql');
 const { isPlainObject, toPositiveInt, normalizeOptionalText } = require('../utils/validation');
 const { createNotification } = require('./notificationController');
-
-const canUserAccessTask = async (db, taskId, user) => {
-  if (user.role === 'admin') {
-    return true;
-  }
-
-  const assignment = await getRow(
-    db,
-    `SELECT 1
-     FROM task_assignments
-     WHERE task_id = ? AND user_id = ?
-     LIMIT 1`,
-    [taskId, user.id]
-  );
-
-  return Boolean(assignment);
-};
+const { canUserAccessTask } = require('../utils/permissions');
 
 exports.getComments = async (req, res) => {
   try {
@@ -155,7 +139,7 @@ exports.deleteComment = async (req, res) => {
       return res.status(403).json({ error: 'Not authorized to modify comments for this task' });
     }
 
-    if (comment.user_id !== user_id && req.user.role !== 'admin') {
+    if (comment.user_id !== user_id && req.user.role !== 'admin' && req.user.role !== 'manager') {
       return res.status(403).json({ error: 'Not authorized to delete this comment' });
     }
 

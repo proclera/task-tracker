@@ -12,6 +12,12 @@ export const LoginPage = () => {
   const navigate = useNavigate();
   const location = useLocation();
 
+  const getDashboardRoute = (role) => {
+    if (role === 'admin') return '/admin';
+    if (role === 'manager') return '/manager';
+    return '/employee';
+  };
+
   useEffect(() => {
     const params = new URLSearchParams(location.search);
     const reason = params.get('reason');
@@ -33,7 +39,7 @@ export const LoginPage = () => {
 
     try {
       const user = await login(email, password);
-      navigate(user.role === 'admin' ? '/admin' : '/employee');
+      navigate(getDashboardRoute(user.role));
     } catch (err) {
       setError(err.response?.data?.error || 'Login failed');
     } finally {

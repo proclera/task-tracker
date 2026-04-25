@@ -18,6 +18,7 @@ export const AdminAnalytics = () => {
   const [deletingEmployeeId, setDeletingEmployeeId] = useState(null);
   const [creatingUser, setCreatingUser] = useState(false);
   const [updatingRoleId, setUpdatingRoleId] = useState(null);
+  const [updatingManagerId, setUpdatingManagerId] = useState(null);
   const { showToast } = useToast();
   const { user } = useAuth();
 
@@ -78,6 +79,22 @@ export const AdminAnalytics = () => {
     }
   };
 
+  const handleManagerChange = async (employeeId, nextManagerId) => {
+    try {
+      setUpdatingManagerId(employeeId);
+      await api.patch(`/employees/${employeeId}/manager`, {
+        manager_id: nextManagerId ? Number(nextManagerId) : null
+      });
+      showToast(nextManagerId ? 'Manager assigned successfully' : 'Manager cleared successfully', 'success');
+      fetchAnalytics();
+    } catch (err) {
+      const message = err.response?.data?.error || 'Failed to update manager';
+      showToast(message, 'error');
+    } finally {
+      setUpdatingManagerId(null);
+    }
+  };
+
   const handleCreateUser = async (event) => {
     event.preventDefault();
 
@@ -94,7 +111,7 @@ export const AdminAnalytics = () => {
     try {
       setCreatingUser(true);
       await api.post('/employees', newUser);
-      showToast(`${newUser.role === 'admin' ? 'Admin' : 'Employee'} account created`, 'success');
+      showToast(`${newUser.role.charAt(0).toUpperCase()}${newUser.role.slice(1)} account created`, 'success');
       setNewUser({
         firstName: '',
         lastName: '',
@@ -118,6 +135,7 @@ export const AdminAnalytics = () => {
   const completionRate = analytics.totalTasks > 0
     ? Math.round((analytics.completedTasks / analytics.totalTasks) * 100)
     : 0;
+  const managerOptions = employees.filter((employee) => employee.role === 'manager');
 
   return (
     <div style={styles.container}>
@@ -208,6 +226,7 @@ export const AdminAnalytics = () => {
                 style={styles.formInput}
               >
                 <option value="employee">Employee</option>
+                <option value="manager">Manager</option>
                 <option value="admin">Admin</option>
               </select>
             </div>
@@ -246,6 +265,7 @@ export const AdminAnalytics = () => {
                           disabled={updatingRoleId === employee.id}
                         >
                           <option value="employee">employee</option>
+                          <option value="manager">manager</option>
                           <option value="admin">admin</option>
                         </select>
                       )}
@@ -265,6 +285,27 @@ export const AdminAnalytics = () => {
                       <span>Completed: {completedTasks}</span>
                       <span>Rate: {completionRateForEmployee}%</span>
                     </div>
+                    {employee.role === 'employee' && (
+                      <div style={styles.managerRow}>
+                        <span style={styles.managerLabel}>Manager</span>
+                        <select
+                          value={employee.manager_id || ''}
+                          onChange={(event) => handleManagerChange(employee.id, event.target.value)}
+                          style={styles.managerSelect}
+                          disabled={updatingManagerId === employee.id}
+                        >
+                          <option value="">Unassigned</option>
+                          {managerOptions.map((manager) => (
+                            <option key={manager.id} value={manager.id}>
+                              {manager.first_name} {manager.last_name}
+                            </option>
+                          ))}
+                        </select>
+                        <span style={styles.managerName}>
+                          {employee.manager_name || 'No manager selected'}
+                        </span>
+                      </div>
+                    )}
                   </div>
                 );
               })
@@ -455,6 +496,28 @@ const styles = {
     gap: '1rem',
     fontSize: '0.85rem',
     color: '#666'
+  },
+  managerRow: {
+    marginTop: '0.6rem',
+    display: 'grid',
+    gridTemplateColumns: '72px minmax(140px, 220px) 1fr',
+    gap: '0.6rem',
+    alignItems: 'center'
+  },
+  managerLabel: {
+    fontSize: '0.82rem',
+    fontWeight: 700,
+    color: '#51627b'
+  },
+  managerSelect: {
+    padding: '0.45rem 0.6rem',
+    border: '1px solid #d3d9e4',
+    borderRadius: '8px',
+    background: 'white'
+  },
+  managerName: {
+    fontSize: '0.82rem',
+    color: '#667892'
   },
   deleteBtn: {
     padding: '0.45rem 0.8rem',

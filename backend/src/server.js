@@ -14,6 +14,8 @@ const timeEntryRoutes = require('./routes/timeEntries');
 const attendanceRoutes = require('./routes/attendance');
 const reportRoutes = require('./routes/reports');
 const gamificationRoutes = require('./routes/gamification');
+const goalRoutes = require('./routes/goals');
+const cronRoutes = require('./routes/cron');
 const { errorHandler } = require('./middleware/errorHandler');
 const { securityHeaders, requireJsonBody } = require('./middleware/security');
 const { enforceDesktopOnly } = require('./middleware/desktopOnly');
@@ -47,6 +49,7 @@ app.get('/health', (req, res) => {
   res.json({ status: 'ok' });
 });
 
+app.use('/api/cron', cronRoutes);
 app.use('/api', enforceDesktopOnly);
 app.use('/api/auth', authRoutes);
 app.use('/api/tasks', taskRoutes);
@@ -57,6 +60,7 @@ app.use('/api/time-entries', timeEntryRoutes);
 app.use('/api/attendance', attendanceRoutes);
 app.use('/api/reports', reportRoutes);
 app.use('/api/gamification', gamificationRoutes);
+app.use('/api/goals', goalRoutes);
 app.use(errorHandler);
 
 const PORT = process.env.PORT || 3000;

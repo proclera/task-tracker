@@ -3,8 +3,15 @@ import { useAuth } from './context/AuthContext';
 import { LoginPage } from './pages/LoginPage';
 import { AdminDashboard } from './pages/AdminDashboard';
 import { EmployeeDashboard } from './pages/EmployeeDashboard';
+import { ManagerDashboard } from './pages/ManagerDashboard';
 import { ProtectedRoute } from './components/ProtectedRoute';
 import { ToastViewport } from './components/ToastViewport';
+
+const getDashboardRoute = (role) => {
+  if (role === 'admin') return '/admin';
+  if (role === 'manager') return '/manager';
+  return '/employee';
+};
 
 function App() {
   const { user, loading } = useAuth();
@@ -24,7 +31,7 @@ function App() {
       <Routes>
         <Route
           path="/login"
-          element={user ? <Navigate to={user.role === 'admin' ? '/admin' : '/employee'} /> : <LoginPage />}
+          element={user ? <Navigate to={getDashboardRoute(user.role)} /> : <LoginPage />}
         />
         <Route
           path="/register"
@@ -39,6 +46,14 @@ function App() {
           }
         />
         <Route
+          path="/manager"
+          element={
+            <ProtectedRoute roles={['manager']}>
+              <ManagerDashboard />
+            </ProtectedRoute>
+          }
+        />
+        <Route
           path="/employee"
           element={
             <ProtectedRoute roles={['employee']}>
@@ -46,7 +61,7 @@ function App() {
             </ProtectedRoute>
           }
         />
-        <Route path="/" element={<Navigate to={user ? (user.role === 'admin' ? '/admin' : '/employee') : '/login'} />} />
+        <Route path="/" element={<Navigate to={user ? getDashboardRoute(user.role) : '/login'} />} />
         <Route path="*" element={<Navigate to="/" />} />
       </Routes>
       <ToastViewport />

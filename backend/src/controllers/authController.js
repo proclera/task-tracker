@@ -1,6 +1,7 @@
 const { getDB, saveDB } = require('../config/database');
 const { getRow } = require('../utils/sql');
 const { ensureOverdueNotifications } = require('./notificationController');
+const { ensureGoalNotifications } = require('./goalController');
 const {
   isPlainObject,
   normalizeEmail,
@@ -9,6 +10,7 @@ const {
   normalizePassword
 } = require('../utils/validation');
 const { registerAuthFailure, clearAuthFailures } = require('../middleware/rateLimit');
+const { USER_ROLES } = require('../utils/permissions');
 
 const JWT_SECRET = process.env.JWT_SECRET || 'dev-secret';
 
@@ -32,7 +34,7 @@ exports.register = async (req, res) => {
       return res.status(400).json({ error: 'All fields are required' });
     }
 
-    if (!['admin', 'employee'].includes(role)) {
+    if (!USER_ROLES.includes(role)) {
       return res.status(400).json({ error: 'Invalid role' });
     }
 
@@ -146,6 +148,9 @@ exports.login = async (req, res) => {
     });
 
     await ensureOverdueNotifications(db, user.id);
+    if (user.role === 'admin') {
+      await ensureGoalNotifications(db, user.id);
+    }
 
     res.json({
       token,
@@ -171,6 +176,9 @@ exports.getCurrentUser = async (req, res) => {
     }
 
     await ensureOverdueNotifications(db, req.user.id);
+    if (user.role === 'admin') {
+      await ensureGoalNotifications(db, req.user.id);
+    }
 
     res.json({ user: buildUserResponse(user) });
   } catch (error) {

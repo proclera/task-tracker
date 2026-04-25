@@ -6,6 +6,7 @@ const {
   sendTaskUpdateEmail,
   sendTaskProgressEmail
 } = require('../services/emailService');
+const { evaluateGoalsForAdmins } = require('./goalController');
 const { getRow, getRows } = require('../utils/sql');
 const {
   VALID_STATUSES,
@@ -14,6 +15,12 @@ const {
   validateAssignmentPayload
 } = require('../utils/taskValidation');
 const { isPlainObject, toPositiveInt, normalizeOptionalText } = require('../utils/validation');
+const {
+  canAssignUsers,
+  canUserAccessTask,
+  canUserManageTask,
+  getManagedUserIds
+} = require('../utils/permissions');
 
 const TASK_SELECT = `
   SELECT
@@ -83,23 +90,6 @@ const getUserDisplayName = async (db, userId) => {
   return `${user?.first_name || ''} ${user?.last_name || ''}`.trim() || 'Admin';
 };
 
-const canUserAccessTask = async (db, taskId, user) => {
-  if (user.role === 'admin') {
-    return true;
-  }
-
-  const assignment = await getRow(
-    db,
-    `SELECT 1
-     FROM task_assignments
-     WHERE task_id = ? AND user_id = ?
-     LIMIT 1`,
-    [taskId, user.id]
-  );
-
-  return Boolean(assignment);
-};
-
 const getAssignableUsers = async (db, assigneeIds) => {
   if (!Array.isArray(assigneeIds) || assigneeIds.length === 0) {
     return [];
@@ -156,6 +146,15 @@ const validateAssignees = async (db, assigneeIds) => {
   }
 
   return { users };
+};
+
+const validateTaskAssignmentAccess = async (db, user, assigneeIds) => {
+  const assignmentAccess = await canAssignUsers(db, user, assigneeIds);
+  if (!assignmentAccess.allowed) {
+    return assignmentAccess.error;
+  }
+
+  return null;
 };
 
 const syncTaskAssignments = async (db, taskId, assigneeIds) => {
@@ -376,6 +375,22 @@ exports.getAllTasks = async (req, res) => {
       params.push(assignee_id);
     }
 
+    if (req.user.role === 'manager') {
+      const managedUserIds = await getManagedUserIds(db, req.user.id);
+      const visibleUserIds = [req.user.id, ...managedUserIds];
+
+      query += ` AND (
+        t.created_by = ?
+        OR EXISTS (
+          SELECT 1
+          FROM task_assignments ta_visible
+          WHERE ta_visible.task_id = t.id
+            AND ta_visible.user_id = ANY(?::int[])
+        )
+      )`;
+      params.push(req.user.id, visibleUserIds);
+    }
+
     query += ` ORDER BY t.created_at DESC`;
 
     const tasks = await getRows(db, query, params);
@@ -432,6 +447,11 @@ exports.createTask = async (req, res) => {
       return res.status(400).json({ error: assigneeError });
     }
 
+    const assignmentAccessError = await validateTaskAssignmentAccess(db, req.user, task.assignee_ids);
+    if (assignmentAccessError) {
+      return res.status(403).json({ error: assignmentAccessError });
+    }
+
     const created_by = req.user.id;
     const assignedByName = await getUserDisplayName(db, req.user.id);
 
@@ -463,6 +483,7 @@ exports.createTask = async (req, res) => {
     }
 
     await saveDB();
+    await evaluateGoalsForAdmins(db);
 
     const createdTask = await getTaskByIdFromDb(db, taskId);
     res.status(201).json({ task: normalizeTaskForViewer(createdTask, req.user.id) });
@@ -488,6 +509,10 @@ exports.updateTask = async (req, res) => {
     const current = await getRow(db, `SELECT * FROM tasks WHERE id = ?`, [id]);
     if (!current) {
       return res.status(404).json({ error: 'Task not found' });
+    }
+
+    if (!(await canUserManageTask(db, id, req.user))) {
+      return res.status(403).json({ error: 'Not authorized to manage this task' });
     }
 
     const { errors, task } = validateTaskPayload(req.body, { partial: true });
@@ -524,6 +549,11 @@ exports.updateTask = async (req, res) => {
     const { error: assigneeError } = await validateAssignees(db, nextTask.assignee_ids);
     if (assigneeError) {
       return res.status(400).json({ error: assigneeError });
+    }
+
+    const assignmentAccessError = await validateTaskAssignmentAccess(db, req.user, nextTask.assignee_ids);
+    if (assignmentAccessError) {
+      return res.status(403).json({ error: assignmentAccessError });
     }
 
     const isStatusManuallyUpdated = task.status !== undefined;
@@ -587,6 +617,7 @@ exports.updateTask = async (req, res) => {
     }
 
     await saveDB();
+    await evaluateGoalsForAdmins(db);
 
     const updatedTask = await getTaskByIdFromDb(db, id);
     res.json({ task: normalizeTaskForViewer(updatedTask, req.user.id) });
@@ -619,6 +650,10 @@ exports.assignTask = async (req, res) => {
       return res.status(404).json({ error: 'Task not found' });
     }
 
+    if (!(await canUserManageTask(db, id, req.user))) {
+      return res.status(403).json({ error: 'Not authorized to manage this task' });
+    }
+
     const currentAssigneeRows = await getRows(
       db,
       `SELECT user_id FROM task_assignments WHERE task_id = ? ORDER BY user_id`,
@@ -629,6 +664,11 @@ exports.assignTask = async (req, res) => {
     const { error: assigneeError } = await validateAssignees(db, assignment.assignee_ids);
     if (assigneeError) {
       return res.status(400).json({ error: assigneeError });
+    }
+
+    const assignmentAccessError = await validateTaskAssignmentAccess(db, req.user, assignment.assignee_ids);
+    if (assignmentAccessError) {
+      return res.status(403).json({ error: assignmentAccessError });
     }
 
     await syncTaskAssignments(db, id, assignment.assignee_ids);
@@ -648,6 +688,7 @@ exports.assignTask = async (req, res) => {
     }
 
     await saveDB();
+    await evaluateGoalsForAdmins(db);
 
     const task = await getTaskByIdFromDb(db, id);
     res.json({ task: normalizeTaskForViewer(task, req.user.id) });
@@ -671,8 +712,13 @@ exports.deleteTask = async (req, res) => {
       return res.status(404).json({ error: 'Task not found' });
     }
 
+    if (!(await canUserManageTask(db, id, req.user))) {
+      return res.status(403).json({ error: 'Not authorized to delete this task' });
+    }
+
     await db.run(`DELETE FROM tasks WHERE id = ?`, [id]);
     await saveDB();
+    await evaluateGoalsForAdmins(db);
 
     res.json({ message: 'Task deleted successfully' });
   } catch (error) {
@@ -824,6 +870,7 @@ exports.updateMyTaskStatus = async (req, res) => {
     }
 
     await saveDB();
+    await evaluateGoalsForAdmins(db);
 
     const task = await getTaskByIdFromDb(db, id);
     task.my_status = status;

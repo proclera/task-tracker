@@ -9,13 +9,57 @@ const {
   normalizePassword,
   toPositiveInt
 } = require('../utils/validation');
+const { USER_ROLES, getManagedUsers } = require('../utils/permissions');
 
 exports.getEmployees = async (req, res) => {
   try {
     const db = await getDB();
-    const employees = await db.query(
-      "SELECT id, email, first_name, last_name, role FROM users ORDER BY role ASC, first_name ASC, last_name ASC"
-    );
+    let employees;
+
+    if (req.user.role === 'admin') {
+      employees = await db.query(
+        `SELECT
+           u.id,
+           u.email,
+           u.first_name,
+           u.last_name,
+           u.role,
+           ep.manager_id,
+           manager.first_name || ' ' || manager.last_name as manager_name
+         FROM users u
+         LEFT JOIN employee_profiles ep ON ep.user_id = u.id
+         LEFT JOIN users manager ON manager.id = ep.manager_id
+         ORDER BY
+           CASE u.role
+             WHEN 'admin' THEN 1
+             WHEN 'manager' THEN 2
+             ELSE 3
+           END,
+           u.first_name ASC,
+           u.last_name ASC`
+      );
+    } else if (req.user.role === 'manager') {
+      const managedUsers = await getManagedUsers(db, req.user.id);
+      const currentUser = await getRow(
+        db,
+        `SELECT id, email, first_name, last_name, role
+         FROM users
+         WHERE id = ?`,
+        [req.user.id]
+      );
+
+      employees = {
+        rows: [currentUser, ...managedUsers]
+          .filter(Boolean)
+          .map((user) => ({
+            ...user,
+            manager_id: user.id === req.user.id ? null : req.user.id,
+            manager_name: user.id === req.user.id ? null : `${currentUser.first_name} ${currentUser.last_name}`
+          }))
+      };
+    } else {
+      employees = { rows: [] };
+    }
 
     res.json({ employees: employees.rows });
   } catch (error) {
@@ -43,7 +87,7 @@ exports.createUserByAdmin = async (req, res) => {
       return res.status(400).json({ error: 'All fields are required' });
     }
 
-    if (!['admin', 'employee'].includes(role)) {
+    if (!USER_ROLES.includes(role)) {
       return res.status(400).json({ error: 'Invalid role' });
     }
 
@@ -109,7 +153,7 @@ exports.updateUserRole = async (req, res) => {
       return res.status(400).json({ error: 'Invalid user id' });
     }
 
-    if (!['admin', 'employee'].includes(role)) {
+    if (!USER_ROLES.includes(role)) {
       return res.status(400).json({ error: 'Invalid role' });
     }
 
@@ -142,6 +186,90 @@ exports.updateUserRole = async (req, res) => {
   } catch (error) {
     console.error('Update user role error:', error);
     res.status(500).json({ error: 'Failed to update user role' });
+  }
+};
+
+exports.updateEmployeeManager = async (req, res) => {
+  try {
+    if (!isPlainObject(req.body)) {
+      return res.status(400).json({ error: 'Invalid request body' });
+    }
+
+    const db = await getDB();
+    const userId = toPositiveInt(req.params.id);
+    const managerId = req.body.manager_id === null || req.body.manager_id === ''
+      ? null
+      : toPositiveInt(req.body.manager_id);
+
+    if (!userId) {
+      return res.status(400).json({ error: 'Invalid user id' });
+    }
+
+    if (managerId !== null && !managerId) {
+      return res.status(400).json({ error: 'Invalid manager id' });
+    }
+
+    const employee = await getRow(
+      db,
+      `SELECT id, role FROM users WHERE id = ?`,
+      [userId]
+    );
+
+    if (!employee) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+
+    if (employee.role !== 'employee') {
+      return res.status(400).json({ error: 'Only employees can be assigned to a manager' });
+    }
+
+    if (managerId === userId) {
+      return res.status(400).json({ error: 'A user cannot manage themselves' });
+    }
+
+    if (managerId !== null) {
+      const manager = await getRow(
+        db,
+        `SELECT id, role FROM users WHERE id = ?`,
+        [managerId]
+      );
+
+      if (!manager || manager.role !== 'manager') {
+        return res.status(400).json({ error: 'Manager must be an active manager account' });
+      }
+    }
+
+    await db.run(
+      `INSERT INTO employee_profiles (user_id, manager_id, updated_at)
+       VALUES (?, ?, CURRENT_TIMESTAMP)
+       ON CONFLICT (user_id)
+       DO UPDATE SET manager_id = EXCLUDED.manager_id, updated_at = CURRENT_TIMESTAMP`,
+      [userId, managerId]
+    );
+
+    await saveDB();
+
+    const updatedUser = await getRow(
+      db,
+      `SELECT
+         u.id,
+         u.email,
+         u.first_name,
+         u.last_name,
+         u.role,
+         ep.manager_id,
+         manager.first_name || ' ' || manager.last_name as manager_name
+       FROM users u
+       LEFT JOIN employee_profiles ep ON ep.user_id = u.id
+       LEFT JOIN users manager ON manager.id = ep.manager_id
+       WHERE u.id = ?`,
+      [userId]
+    );
+
+    res.json({ user: updatedUser });
+  } catch (error) {
+    console.error('Update employee manager error:', error);
+    res.status(500).json({ error: 'Failed to update employee manager' });
   }
 };
 

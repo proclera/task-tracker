@@ -41,9 +41,10 @@ export const TaskManagementModal = ({ task, onClose, user, onUpdate }) => {
   const [taskError, setTaskError] = useState('');
   const [timeError, setTimeError] = useState('');
   const isAdmin = user.role === 'admin';
+  const isManager = user.role === 'manager';
   const canUpdateOwnProgress = Boolean(taskData.my_status);
-  const isContributorOnlyAdmin = isAdmin && canUpdateOwnProgress && taskData.created_by !== user.id;
-  const showAdminEditor = isAdmin && !isContributorOnlyAdmin;
+  const canManageTask = isAdmin || (isManager && taskData.created_by === user.id);
+  const showAdminEditor = canManageTask;
   const { showToast } = useToast();
 
   useEffect(() => {
@@ -58,10 +59,10 @@ export const TaskManagementModal = ({ task, onClose, user, onUpdate }) => {
     fetchTimeEntries(task.id);
     fetchActiveTimeEntry();
 
-    if (isAdmin) {
+    if (isAdmin || isManager) {
       fetchEmployees();
     }
-  }, [task, isAdmin]);
+  }, [task, isAdmin, isManager]);
 
   const fetchEmployees = async () => {
     try {
@@ -574,7 +575,7 @@ export const TaskManagementModal = ({ task, onClose, user, onUpdate }) => {
                       <span style={styles.commentTime}>
                         {formatServerDateTime(comment.created_at)}
                       </span>
-                      {(user.role === 'admin' || comment.user_id === user.id) && (
+                      {(user.role === 'admin' || user.role === 'manager' || comment.user_id === user.id) && (
                         <button
                           type="button"
                           style={styles.deleteCommentBtn}
