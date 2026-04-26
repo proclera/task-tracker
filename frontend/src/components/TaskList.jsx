@@ -287,6 +287,9 @@ const TaskCard = ({ task, user, onStatusChange, onClick, accent = 'blue' }) => {
     : canUpdateOwnProgress
       ? 'Contributor'
       : '';
+  const creatorRoleLabel = user.role === 'admin' && task.created_by_role === 'manager'
+    ? 'Manager Created'
+    : '';
 
   return (
     <div
@@ -309,6 +312,11 @@ const TaskCard = ({ task, user, onStatusChange, onClick, accent = 'blue' }) => {
         {relationshipLabel && (
           <span style={{ ...styles.badge, ...(relationshipLabel === 'Manager' ? styles.roleBadgeManager : styles.roleBadgeContributor) }}>
             {relationshipLabel}
+          </span>
+        )}
+        {creatorRoleLabel && (
+          <span style={{ ...styles.badge, ...styles.roleBadgeManagerCreated }}>
+            {creatorRoleLabel}
           </span>
         )}
         <span style={{ ...styles.badge, background: priorityColors[task.priority] }}>
@@ -515,6 +523,10 @@ const styles = {
   },
   roleBadgeContributor: {
     background: '#9a5b00',
+    color: 'white'
+  },
+  roleBadgeManagerCreated: {
+    background: '#6d28d9',
     color: 'white'
   },
   cardTitle: {

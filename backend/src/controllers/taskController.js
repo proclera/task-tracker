@@ -30,6 +30,7 @@ const TASK_SELECT = `
     NULLIF(COALESCE(assignments.assignee_names, ''), '') as assignee_name,
     COALESCE(assignments.assignee_statuses, '[]'::json) as assignee_statuses,
     c.first_name || ' ' || c.last_name as created_by_name,
+    c.role as created_by_role,
     latest_comments.latest_comment,
     latest_comments.latest_comment_at,
     latest_comments.latest_comment_by

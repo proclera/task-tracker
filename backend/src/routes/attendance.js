@@ -5,7 +5,8 @@ const {
   checkIn,
   checkOut,
   getMyAttendanceHistory,
-  getAttendanceSummary
+  getAttendanceSummary,
+  downloadAttendanceMonthlyPdf
 } = require('../controllers/attendanceController');
 
 const router = express.Router();
@@ -17,5 +18,6 @@ router.get('/me/history', getMyAttendanceHistory);
 router.post('/check-in', checkIn);
 router.patch('/:id/check-out', checkOut);
 router.get('/admin/summary', requireRole('admin'), getAttendanceSummary);
+router.get('/admin/monthly-pdf', requireRole('admin'), downloadAttendanceMonthlyPdf);
 
 module.exports = router;

@@ -2,9 +2,13 @@ import { useEffect, useState } from 'react';
 import api from '../lib/api';
 import { formatServerDateTime, formatServerTime } from '../lib/datetime';
 
+const getCurrentMonthValue = () => new Date().toISOString().slice(0, 7);
+
 export const AdminAttendanceOverview = () => {
   const [summary, setSummary] = useState(null);
+  const [selectedMonth, setSelectedMonth] = useState(getCurrentMonthValue);
   const [loading, setLoading] = useState(true);
+  const [downloading, setDownloading] = useState(false);
   const [error, setError] = useState('');
 
   useEffect(() => {
@@ -12,7 +16,9 @@ export const AdminAttendanceOverview = () => {
       try {
         setLoading(true);
         setError('');
-        const response = await api.get('/attendance/admin/summary');
+        const response = await api.get('/attendance/admin/summary', {
+          params: { month: selectedMonth }
+        });
         setSummary(response.data.summary);
       } catch (err) {
         setError(err.response?.data?.error || 'Failed to load attendance overview');
@@ -22,12 +28,38 @@ export const AdminAttendanceOverview = () => {
     };
 
     fetchSummary();
-  }, []);
+  }, [selectedMonth]);
+
+  const handleDownloadPdf = async () => {
+    try {
+      setDownloading(true);
+      setError('');
+      const response = await api.get('/attendance/admin/monthly-pdf', {
+        params: { month: selectedMonth },
+        responseType: 'blob'
+      });
+
+      const blob = new Blob([response.data], { type: 'application/pdf' });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+
+      link.href = url;
+      link.download = `attendance-${selectedMonth}.pdf`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      setError(err.response?.data?.error || 'Failed to download attendance PDF');
+    } finally {
+      setDownloading(false);
+    }
+  };
 
   const cards = [
-    { label: 'Checked In Today', value: summary?.todayCheckedIn ?? 0, accent: 'linear-gradient(135deg, #1e63d4, #4b91ff)' },
-    { label: 'Checked Out Today', value: summary?.checkedOutToday ?? 0, accent: 'linear-gradient(135deg, #1f8f57, #45c47c)' },
-    { label: 'Late Today', value: summary?.lateToday ?? 0, accent: 'linear-gradient(135deg, #d4841e, #ffb24b)' }
+    { label: 'Checked In This Month', value: summary?.checkedInCount ?? 0, accent: 'linear-gradient(135deg, #1e63d4, #4b91ff)' },
+    { label: 'Checked Out This Month', value: summary?.checkedOutCount ?? 0, accent: 'linear-gradient(135deg, #1f8f57, #45c47c)' },
+    { label: 'Late This Month', value: summary?.lateCount ?? 0, accent: 'linear-gradient(135deg, #d4841e, #ffb24b)' }
   ];
 
   if (loading) return <div style={styles.loading}>Loading attendance...</div>;
@@ -38,7 +70,32 @@ export const AdminAttendanceOverview = () => {
       <div style={styles.header}>
         <div>
           <h2 style={styles.title}>Attendance Overview</h2>
-          <p style={styles.subtitle}>Monitor daily employee presence and recent check-ins.</p>
+          <p style={styles.subtitle}>
+            Monitor monthly employee attendance and open previous months whenever needed.
+          </p>
+          <div style={styles.periodLabel}>
+            Viewing: {summary?.period?.monthLabel || selectedMonth}
+          </div>
+        </div>
+
+        <div style={styles.actions}>
+          <label style={styles.monthField}>
+            <span style={styles.monthFieldLabel}>Month</span>
+            <input
+              type="month"
+              value={selectedMonth}
+              onChange={(event) => setSelectedMonth(event.target.value)}
+              style={styles.monthInput}
+            />
+          </label>
+          <button
+            type="button"
+            onClick={handleDownloadPdf}
+            disabled={downloading}
+            style={styles.downloadButton}
+          >
+            {downloading ? 'Downloading...' : 'Download PDF'}
+          </button>
         </div>
       </div>
 
@@ -52,7 +109,7 @@ export const AdminAttendanceOverview = () => {
       </div>
 
       <div style={styles.listCard}>
-        <h3 style={styles.listTitle}>This Month's Attendance Record</h3>
+        <h3 style={styles.listTitle}>{summary?.period?.monthLabel || 'Selected Month'} Attendance Record</h3>
         {summary?.monthlyAttendance?.length ? (
           summary.monthlyAttendance.map((record) => (
             <div key={record.id} style={styles.record}>
@@ -85,7 +142,12 @@ const styles = {
     padding: '1rem'
   },
   header: {
-    marginBottom: '1rem'
+    marginBottom: '1rem',
+    display: 'flex',
+    justifyContent: 'space-between',
+    gap: '1rem',
+    alignItems: 'flex-start',
+    flexWrap: 'wrap'
   },
   title: {
     margin: '0 0 0.35rem 0',
@@ -95,6 +157,45 @@ const styles = {
   subtitle: {
     margin: 0,
     color: '#667892'
+  },
+  periodLabel: {
+    marginTop: '0.55rem',
+    color: '#183153',
+    fontWeight: 600
+  },
+  actions: {
+    display: 'flex',
+    gap: '0.8rem',
+    alignItems: 'flex-end',
+    flexWrap: 'wrap'
+  },
+  monthField: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: '0.35rem'
+  },
+  monthFieldLabel: {
+    color: '#667892',
+    fontSize: '0.9rem',
+    fontWeight: 600
+  },
+  monthInput: {
+    minWidth: '150px',
+    padding: '0.75rem 0.85rem',
+    borderRadius: '12px',
+    border: '1px solid #d5deea',
+    color: '#183153',
+    background: '#fff'
+  },
+  downloadButton: {
+    border: 'none',
+    borderRadius: '12px',
+    padding: '0.82rem 1rem',
+    background: '#183153',
+    color: '#fff',
+    fontWeight: 700,
+    cursor: 'pointer',
+    boxShadow: '0 12px 26px rgba(24, 49, 83, 0.16)'
   },
   loading: {
     padding: '2rem',

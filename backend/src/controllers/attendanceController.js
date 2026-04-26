@@ -2,6 +2,7 @@ const { getDB, saveDB } = require('../config/database');
 const { getRow, getRows } = require('../utils/sql');
 const { isPlainObject, toPositiveInt } = require('../utils/validation');
 const { awardPoints, refreshStreakFromAttendance, awardBadges } = require('../services/gamificationService');
+const { createSimplePdf } = require('../utils/pdf');
 
 const ATTENDANCE_SELECT = `
   SELECT ar.*, u.first_name || ' ' || u.last_name as user_name, u.email
@@ -10,15 +11,65 @@ const ATTENDANCE_SELECT = `
 `;
 
 const getTodayDate = () => new Date().toISOString().slice(0, 10);
+const MONTH_KEY_PATTERN = /^\d{4}-\d{2}$/;
 const getMonthStartDate = () => {
   const now = new Date();
   return `${now.getUTCFullYear()}-${String(now.getUTCMonth() + 1).padStart(2, '0')}-01`;
+};
+const getCurrentMonthKey = () => getMonthStartDate().slice(0, 7);
+
+const getMonthRange = (monthKey = getCurrentMonthKey()) => {
+  if (!MONTH_KEY_PATTERN.test(monthKey)) {
+    return null;
+  }
+
+  const [yearValue, monthValue] = monthKey.split('-').map(Number);
+  const start = new Date(Date.UTC(yearValue, monthValue - 1, 1));
+  const nextMonth = new Date(Date.UTC(yearValue, monthValue, 1));
+
+  return {
+    key: monthKey,
+    startDate: start.toISOString().slice(0, 10),
+    endDateExclusive: nextMonth.toISOString().slice(0, 10),
+    isCurrentMonth: monthKey === getCurrentMonthKey()
+  };
+};
+
+const formatMonthLabel = (monthKey) => {
+  const range = getMonthRange(monthKey);
+
+  if (!range) {
+    return monthKey;
+  }
+
+  return new Intl.DateTimeFormat('en-US', {
+    month: 'long',
+    year: 'numeric',
+    timeZone: 'UTC'
+  }).format(new Date(`${range.startDate}T00:00:00.000Z`));
 };
 
 const calculateMinutes = (start, end) => {
   const startTime = new Date(start);
   const endTime = new Date(end);
   return Math.max(1, Math.round((endTime - startTime) / 60000));
+};
+
+const getMonthlyAttendanceRecords = async (db, monthRange, userId = null) => {
+  const whereClause = userId
+    ? 'WHERE ar.user_id = ? AND ar.attendance_date >= ? AND ar.attendance_date < ?'
+    : 'WHERE ar.attendance_date >= ? AND ar.attendance_date < ?';
+  const params = userId
+    ? [userId, monthRange.startDate, monthRange.endDateExclusive]
+    : [monthRange.startDate, monthRange.endDateExclusive];
+
+  return getRows(
+    db,
+    `${ATTENDANCE_SELECT}
+     ${whereClause}
+     ORDER BY ar.attendance_date DESC, ar.check_in_time DESC`,
+    params
+  );
 };
 
 exports.getMyAttendanceToday = async (req, res) => {
@@ -144,17 +195,21 @@ exports.checkOut = async (req, res) => {
 exports.getMyAttendanceHistory = async (req, res) => {
   try {
     const db = await getDB();
-    const monthStart = getMonthStartDate();
+    const monthRange = getMonthRange(req.query.month || getCurrentMonthKey());
 
-    const records = await getRows(
-      db,
-      `${ATTENDANCE_SELECT}
-       WHERE ar.user_id = ? AND ar.attendance_date >= ?
-       ORDER BY ar.attendance_date DESC, ar.check_in_time DESC`,
-      [req.user.id, monthStart]
-    );
+    if (!monthRange) {
+      return res.status(400).json({ error: 'month must be in YYYY-MM format' });
+    }
 
-    res.json({ records });
+    const records = await getMonthlyAttendanceRecords(db, monthRange, req.user.id);
+
+    res.json({
+      filters: {
+        month: monthRange.key,
+        monthLabel: formatMonthLabel(monthRange.key)
+      },
+      records
+    });
   } catch (error) {
     console.error('Get attendance history error:', error);
     res.status(500).json({ error: 'Failed to fetch attendance history' });
@@ -164,47 +219,103 @@ exports.getMyAttendanceHistory = async (req, res) => {
 exports.getAttendanceSummary = async (req, res) => {
   try {
     const db = await getDB();
-    const attendanceDate = getTodayDate();
-    const monthStart = getMonthStartDate();
+    const monthRange = getMonthRange(req.query.month || getCurrentMonthKey());
 
-    const todayCheckedIn = await getRow(
-      db,
-      `SELECT COUNT(*)::int as count FROM attendance_records WHERE attendance_date = ?`,
-      [attendanceDate]
-    );
-    const lateToday = await getRow(
-      db,
-      `SELECT COUNT(*)::int as count FROM attendance_records WHERE attendance_date = ? AND status = 'late'`,
-      [attendanceDate]
-    );
-    const checkedOutToday = await getRow(
-      db,
-      `SELECT COUNT(*)::int as count FROM attendance_records WHERE attendance_date = ? AND check_out_time IS NOT NULL`,
-      [attendanceDate]
-    );
-    const recentAttendance = await getRows(
-      db,
-      `${ATTENDANCE_SELECT} ORDER BY ar.attendance_date DESC, ar.check_in_time DESC LIMIT 10`
-    );
-    const monthlyAttendance = await getRows(
-      db,
-      `${ATTENDANCE_SELECT}
-       WHERE ar.attendance_date >= ?
-       ORDER BY ar.attendance_date DESC, ar.check_in_time DESC`,
-      [monthStart]
-    );
+    if (!monthRange) {
+      return res.status(400).json({ error: 'month must be in YYYY-MM format' });
+    }
+
+    const [checkedInCount, lateCount, checkedOutCount, monthlyAttendance] = await Promise.all([
+      getRow(
+        db,
+        `SELECT COUNT(*)::int as count
+         FROM attendance_records
+         WHERE attendance_date >= ? AND attendance_date < ?`,
+        [monthRange.startDate, monthRange.endDateExclusive]
+      ),
+      getRow(
+        db,
+        `SELECT COUNT(*)::int as count
+         FROM attendance_records
+         WHERE attendance_date >= ? AND attendance_date < ? AND status = 'late'`,
+        [monthRange.startDate, monthRange.endDateExclusive]
+      ),
+      getRow(
+        db,
+        `SELECT COUNT(*)::int as count
+         FROM attendance_records
+         WHERE attendance_date >= ? AND attendance_date < ? AND check_out_time IS NOT NULL`,
+        [monthRange.startDate, monthRange.endDateExclusive]
+      ),
+      getMonthlyAttendanceRecords(db, monthRange)
+    ]);
 
     res.json({
       summary: {
-        todayCheckedIn: todayCheckedIn?.count || 0,
-        lateToday: lateToday?.count || 0,
-        checkedOutToday: checkedOutToday?.count || 0,
-        recentAttendance,
+        checkedInCount: checkedInCount?.count || 0,
+        lateCount: lateCount?.count || 0,
+        checkedOutCount: checkedOutCount?.count || 0,
+        period: {
+          month: monthRange.key,
+          monthLabel: formatMonthLabel(monthRange.key),
+          isCurrentMonth: monthRange.isCurrentMonth
+        },
         monthlyAttendance
       }
     });
   } catch (error) {
     console.error('Get attendance summary error:', error);
     res.status(500).json({ error: 'Failed to fetch attendance summary' });
+  }
+};
+
+exports.downloadAttendanceMonthlyPdf = async (req, res) => {
+  try {
+    const db = await getDB();
+    const monthRange = getMonthRange(req.query.month || getCurrentMonthKey());
+
+    if (!monthRange) {
+      return res.status(400).json({ error: 'month must be in YYYY-MM format' });
+    }
+
+    const records = await getMonthlyAttendanceRecords(db, monthRange);
+    const monthLabel = formatMonthLabel(monthRange.key);
+    const lines = [
+      `Task Tracker Attendance Report`,
+      `Month: ${monthLabel}`,
+      `Generated: ${new Date().toISOString().slice(0, 10)}`,
+      `Total records: ${records.length}`,
+      ''
+    ];
+
+    if (records.length === 0) {
+      lines.push('No attendance records found for this month.');
+    } else {
+      records.forEach((record, index) => {
+        lines.push(`${index + 1}. ${record.user_name}`);
+        lines.push(`   Date: ${record.attendance_date}`);
+        lines.push(`   Status: ${record.status}`);
+        lines.push(`   Check in: ${record.check_in_time || '-'}`);
+        lines.push(`   Check out: ${record.check_out_time || 'In progress'}`);
+        lines.push(`   Total minutes: ${record.total_minutes || 0}`);
+
+        if (record.work_summary) {
+          lines.push(`   Work summary: ${record.work_summary.replace(/\r?\n/g, ' ')}`);
+        }
+
+        lines.push('');
+      });
+    }
+
+    const pdfBuffer = createSimplePdf(lines);
+    const fileName = `attendance-${monthRange.key}.pdf`;
+
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `attachment; filename="${fileName}"`);
+    res.setHeader('Content-Length', String(pdfBuffer.length));
+    res.send(pdfBuffer);
+  } catch (error) {
+    console.error('Download attendance PDF error:', error);
+    res.status(500).json({ error: 'Failed to download attendance PDF' });
   }
 };

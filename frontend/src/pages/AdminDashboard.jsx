@@ -86,6 +86,15 @@ export const AdminDashboard = () => {
             <TaskList
               user={user}
               refreshToken={refreshKey}
+              title="Manager Team Tasks"
+              subtitle="These are tasks managers created for their teams, so you can review them from admin side and guide managers where needed."
+              taskFilter={(task) => task.created_by_role === 'manager'}
+              emptyMessage="No manager-created team tasks found yet."
+              accent="amber"
+            />
+            <TaskList
+              user={user}
+              refreshToken={refreshKey}
               endpoint={`/tasks?assignee_id=${user.id}`}
               title="Assigned To Me"
               subtitle="These are the tasks assigned to you where you can update progress and share comments."
