@@ -9,7 +9,8 @@ const createAdminFormState = (task) => ({
   status: task.status || 'pending',
   priority: task.priority || 'medium',
   assignee_ids: Array.isArray(task.assignee_ids) ? task.assignee_ids : [],
-  due_date: task.due_date || ''
+  due_date: task.due_date || '',
+  goal_id: task.goal_id || ''
 });
 
 const getStatusColor = (status) => {
@@ -26,6 +27,7 @@ export const TaskManagementModal = ({ task, onClose, user, onUpdate }) => {
   const [taskData, setTaskData] = useState(task);
   const [adminForm, setAdminForm] = useState(createAdminFormState(task));
   const [employees, setEmployees] = useState([]);
+  const [goals, setGoals] = useState([]);
   const [comments, setComments] = useState([]);
   const [timeEntries, setTimeEntries] = useState([]);
   const [activeTimeEntry, setActiveTimeEntry] = useState(null);
@@ -62,6 +64,10 @@ export const TaskManagementModal = ({ task, onClose, user, onUpdate }) => {
     if (isAdmin || isManager) {
       fetchEmployees();
     }
+
+    if (isAdmin) {
+      fetchGoals();
+    }
   }, [task, isAdmin, isManager]);
 
   const fetchEmployees = async () => {
@@ -70,6 +76,17 @@ export const TaskManagementModal = ({ task, onClose, user, onUpdate }) => {
       setEmployees(response.data.employees || []);
     } catch (err) {
       const message = err.response?.data?.error || 'Failed to load employees';
+      setTaskError(message);
+      showToast(message, 'error');
+    }
+  };
+
+  const fetchGoals = async () => {
+    try {
+      const response = await api.get('/goals');
+      setGoals(response.data.goals || []);
+    } catch (err) {
+      const message = err.response?.data?.error || 'Failed to load goals';
       setTaskError(message);
       showToast(message, 'error');
     }
@@ -171,7 +188,8 @@ export const TaskManagementModal = ({ task, onClose, user, onUpdate }) => {
         status: adminForm.status,
         priority: adminForm.priority,
         assignee_ids: adminForm.assignee_ids,
-        due_date: adminForm.due_date || null
+        due_date: adminForm.due_date || null,
+        goal_id: isAdmin ? (adminForm.goal_id || null) : undefined
       });
       const updatedTask = updateResponse.data.task;
       setTaskData(updatedTask);
@@ -374,6 +392,28 @@ export const TaskManagementModal = ({ task, onClose, user, onUpdate }) => {
                   />
                 </label>
 
+                {isAdmin && (
+                  <label style={styles.field}>
+                    <span style={styles.fieldLabel}>Linked goal</span>
+                    <select
+                      name="goal_id"
+                      value={adminForm.goal_id}
+                      onChange={handleAdminFieldChange}
+                      style={styles.input}
+                    >
+                      <option value="">No linked goal</option>
+                      {goals.map((goal) => (
+                        <option key={goal.id} value={goal.id}>
+                          {goal.title}
+                        </option>
+                      ))}
+                    </select>
+                    <span style={styles.helperText}>
+                      Goal progress will only increase when this task is linked to the matching admin goal.
+                    </span>
+                  </label>
+                )}
+
                 <label style={{ ...styles.field, gridColumn: '1 / -1' }}>
                   <span style={styles.fieldLabel}>Assignees</span>
                   <div style={styles.assignmentPanel}>
@@ -452,6 +492,12 @@ export const TaskManagementModal = ({ task, onClose, user, onUpdate }) => {
               <span style={styles.metaLabel}>Created by:</span>
               <span>{taskData.created_by_name}</span>
             </div>
+            {taskData.goal_title && (
+              <div style={styles.metaItem}>
+                <span style={styles.metaLabel}>Linked goal:</span>
+                <span>{taskData.goal_title}</span>
+              </div>
+            )}
             {taskData.due_date && (
               <div style={styles.metaItem}>
                 <span style={styles.metaLabel}>Due date:</span>

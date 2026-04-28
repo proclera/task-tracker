@@ -133,10 +133,9 @@ const getGoalMetricCount = async (db, goal) => {
       `SELECT COUNT(*)::int as count
        FROM task_assignments ta
        INNER JOIN tasks t ON t.id = ta.task_id
-       INNER JOIN users creator ON creator.id = t.created_by
-       WHERE creator.role = 'admin'
+       WHERE t.goal_id = ?
          AND ta.created_at::date BETWEEN ? AND ?`,
-      [goal.start_date, goal.end_date]
+      [goal.id, goal.start_date, goal.end_date]
     );
 
     return row?.count || 0;
@@ -147,11 +146,10 @@ const getGoalMetricCount = async (db, goal) => {
     `SELECT COUNT(*)::int as count
      FROM task_assignments ta
      INNER JOIN tasks t ON t.id = ta.task_id
-     INNER JOIN users creator ON creator.id = t.created_by
-     WHERE creator.role = 'admin'
+     WHERE t.goal_id = ?
        AND ta.status = 'completed'
        AND ta.updated_at::date BETWEEN ? AND ?`,
-    [goal.start_date, goal.end_date]
+    [goal.id, goal.start_date, goal.end_date]
   );
 
   return row?.count || 0;

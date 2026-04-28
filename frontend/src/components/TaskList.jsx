@@ -50,6 +50,7 @@ export const TaskList = ({
     const matchesSearch = !normalizedSearch || [
       task.title,
       task.description,
+      task.goal_title,
       task.created_by_name,
       task.assignee_names,
       task.assignee_name,
@@ -330,6 +331,9 @@ const TaskCard = ({ task, user, onStatusChange, onClick, accent = 'blue' }) => {
 
       <div style={styles.metaStrip}>
         <span style={styles.metaChip}>Assigned: {task.assignee_names || task.assignee_name || 'Unassigned'}</span>
+        {task.goal_title && (
+          <span style={styles.metaChip}>Goal: {task.goal_title}</span>
+        )}
         {task.due_date && (
           <span style={{ ...styles.metaChip, ...(isOverdue ? styles.metaChipOverdue : {}) }}>
             Due: {formatDateLabel(task.due_date)}

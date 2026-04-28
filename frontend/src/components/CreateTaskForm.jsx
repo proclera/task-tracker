@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import api from '../lib/api';
 import { useToast } from '../context/ToastContext';
+import { useAuth } from '../context/AuthContext';
 
 export const CreateTaskForm = ({ onSuccess }) => {
   const [formData, setFormData] = useState({
@@ -8,17 +9,24 @@ export const CreateTaskForm = ({ onSuccess }) => {
     description: '',
     priority: 'medium',
     assignee_ids: [],
-    due_date: ''
+    due_date: '',
+    goal_id: ''
   });
   const [employees, setEmployees] = useState([]);
+  const [goals, setGoals] = useState([]);
   const [loading, setLoading] = useState(false);
   const [loadingEmployees, setLoadingEmployees] = useState(true);
   const [error, setError] = useState('');
   const { showToast } = useToast();
+  const { user } = useAuth();
+  const isAdmin = user?.role === 'admin';
 
   useEffect(() => {
     fetchEmployees();
-  }, []);
+    if (isAdmin) {
+      fetchGoals();
+    }
+  }, [isAdmin]);
 
   const fetchEmployees = async () => {
     try {
@@ -30,6 +38,15 @@ export const CreateTaskForm = ({ onSuccess }) => {
       showToast('Could not load employees for assignment', 'error');
     } finally {
       setLoadingEmployees(false);
+    }
+  };
+
+  const fetchGoals = async () => {
+    try {
+      const response = await api.get('/goals');
+      setGoals(response.data.goals || []);
+    } catch (err) {
+      showToast('Could not load goals for task linking', 'error');
     }
   };
 
@@ -59,14 +76,16 @@ export const CreateTaskForm = ({ onSuccess }) => {
       await api.post('/tasks', {
         ...formData,
         assignee_ids: formData.assignee_ids,
-        due_date: formData.due_date || null
+        due_date: formData.due_date || null,
+        goal_id: formData.goal_id || null
       });
       setFormData({
         title: '',
         description: '',
         priority: 'medium',
         assignee_ids: [],
-        due_date: ''
+        due_date: '',
+        goal_id: ''
       });
       showToast('Task created successfully', 'success');
       onSuccess();
@@ -131,6 +150,22 @@ export const CreateTaskForm = ({ onSuccess }) => {
             style={styles.select}
           />
         </div>
+
+        {isAdmin && (
+          <select
+            name="goal_id"
+            value={formData.goal_id}
+            onChange={handleChange}
+            style={styles.select}
+          >
+            <option value="">No linked goal</option>
+            {goals.map((goal) => (
+              <option key={goal.id} value={goal.id}>
+                {goal.title}
+              </option>
+            ))}
+          </select>
+        )}
 
         <div style={styles.assignmentPanel}>
           <div style={styles.assignmentHeader}>

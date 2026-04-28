@@ -25,6 +25,7 @@ const {
 const TASK_SELECT = `
   SELECT
     t.*,
+    g.title as goal_title,
     COALESCE(assignments.assignee_ids, ARRAY[]::INTEGER[]) as assignee_ids,
     COALESCE(assignments.assignee_names, '') as assignee_names,
     NULLIF(COALESCE(assignments.assignee_names, ''), '') as assignee_name,
@@ -52,6 +53,7 @@ const TASK_SELECT = `
     INNER JOIN users u ON u.id = ta.user_id
     GROUP BY ta.task_id
   ) assignments ON assignments.task_id = t.id
+  LEFT JOIN goals g ON g.id = t.goal_id
   LEFT JOIN users c ON t.created_by = c.id
   LEFT JOIN (
     SELECT
@@ -156,6 +158,20 @@ const validateTaskAssignmentAccess = async (db, user, assigneeIds) => {
   }
 
   return null;
+};
+
+const validateGoalLink = async (db, goalId) => {
+  if (goalId === null || goalId === undefined) {
+    return null;
+  }
+
+  const goal = await getRow(
+    db,
+    `SELECT id FROM goals WHERE id = ?`,
+    [goalId]
+  );
+
+  return goal ? null : 'Selected goal does not exist';
 };
 
 const syncTaskAssignments = async (db, taskId, assigneeIds) => {
@@ -278,6 +294,9 @@ const buildTaskChangeSummary = (current, nextTask, newAssigneeIds, removedAssign
   }
   if ((current.due_date || '') !== (nextTask.due_date || '')) {
     changes.push(`Due date: ${current.due_date || 'Not set'} -> ${nextTask.due_date || 'Not set'}`);
+  }
+  if ((current.goal_id || null) !== (nextTask.goal_id || null)) {
+    changes.push('Goal link updated');
   }
   if (current.status !== nextStatus) {
     changes.push(`Status: ${current.status} -> ${nextStatus}`);
@@ -448,6 +467,11 @@ exports.createTask = async (req, res) => {
       return res.status(400).json({ error: assigneeError });
     }
 
+    const goalError = await validateGoalLink(db, task.goal_id);
+    if (goalError) {
+      return res.status(400).json({ error: goalError });
+    }
+
     const assignmentAccessError = await validateTaskAssignmentAccess(db, req.user, task.assignee_ids);
     if (assignmentAccessError) {
       return res.status(403).json({ error: assignmentAccessError });
@@ -462,10 +486,10 @@ exports.createTask = async (req, res) => {
     ) : task.status;
 
     const result = await db.run(
-      `INSERT INTO tasks (title, description, status, priority, assignee_id, created_by, due_date)
-       VALUES (?, ?, ?, ?, ?, ?, ?)
+      `INSERT INTO tasks (title, description, status, priority, assignee_id, created_by, due_date, goal_id)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)
        RETURNING id`,
-      [task.title, task.description, initialStatus, task.priority, task.assignee_id, created_by, task.due_date]
+      [task.title, task.description, initialStatus, task.priority, task.assignee_id, created_by, task.due_date, task.goal_id]
     );
 
     const taskId = result.rows[0].id;
@@ -533,7 +557,8 @@ exports.updateTask = async (req, res) => {
       assignee_id: task.assignee_ids !== undefined
         ? (task.assignee_ids[0] ?? null)
         : (task.assignee_id !== undefined ? task.assignee_id : current.assignee_id),
-      due_date: task.due_date !== undefined ? task.due_date : current.due_date
+      due_date: task.due_date !== undefined ? task.due_date : current.due_date,
+      goal_id: task.goal_id !== undefined ? task.goal_id : current.goal_id
     };
 
     if (task.assignee_id !== undefined && task.assignee_ids === undefined) {
@@ -552,6 +577,11 @@ exports.updateTask = async (req, res) => {
       return res.status(400).json({ error: assigneeError });
     }
 
+    const goalError = await validateGoalLink(db, nextTask.goal_id);
+    if (goalError) {
+      return res.status(400).json({ error: goalError });
+    }
+
     const assignmentAccessError = await validateTaskAssignmentAccess(db, req.user, nextTask.assignee_ids);
     if (assignmentAccessError) {
       return res.status(403).json({ error: assignmentAccessError });
@@ -562,9 +592,9 @@ exports.updateTask = async (req, res) => {
 
     await db.run(
       `UPDATE tasks
-       SET title = ?, description = ?, priority = ?, due_date = ?, updated_at = CURRENT_TIMESTAMP
+       SET title = ?, description = ?, priority = ?, due_date = ?, goal_id = ?, updated_at = CURRENT_TIMESTAMP
        WHERE id = ?`,
-      [nextTask.title, nextTask.description, nextTask.priority, nextTask.due_date, id]
+      [nextTask.title, nextTask.description, nextTask.priority, nextTask.due_date, nextTask.goal_id, id]
     );
     await syncTaskAssignments(db, id, nextTask.assignee_ids);
     if (nextTask.assignee_ids.length > 0 && isStatusManuallyUpdated) {

@@ -58,6 +58,19 @@ const normalizeAssigneeIds = (value) => {
   return normalized;
 };
 
+const normalizeGoalId = (value) => {
+  if (value === undefined) {
+    return undefined;
+  }
+
+  if (value === null || value === '') {
+    return null;
+  }
+
+  const parsed = Number(value);
+  return Number.isInteger(parsed) && parsed > 0 ? parsed : NaN;
+};
+
 const validateTaskPayload = (payload, { partial = false } = {}) => {
   const errors = [];
   const task = {};
@@ -129,6 +142,16 @@ const validateTaskPayload = (payload, { partial = false } = {}) => {
     }
   }
 
+  if (payload.goal_id !== undefined) {
+    const goalId = normalizeGoalId(payload.goal_id);
+
+    if (Number.isNaN(goalId)) {
+      errors.push('Invalid goal_id');
+    } else {
+      task.goal_id = goalId;
+    }
+  }
+
   if (!partial) {
     if (task.description === undefined) task.description = '';
     if (task.status === undefined) task.status = 'pending';
@@ -138,6 +161,7 @@ const validateTaskPayload = (payload, { partial = false } = {}) => {
     }
     if (task.assignee_id === undefined) task.assignee_id = null;
     if (task.due_date === undefined) task.due_date = null;
+    if (task.goal_id === undefined) task.goal_id = null;
   }
 
   return { errors, task };

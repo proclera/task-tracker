@@ -267,6 +267,13 @@ async function ensureColumnsExist(database) {
       END IF;
     END $$;
   `);
+
+  await database.query(`
+    ALTER TABLE tasks
+    ADD COLUMN IF NOT EXISTS goal_id INTEGER REFERENCES goals(id) ON DELETE SET NULL
+  `);
+
+  await database.query(`CREATE INDEX IF NOT EXISTS idx_tasks_goal ON tasks(goal_id)`);
   await database.query(`
     ALTER TABLE users
     ADD CONSTRAINT users_role_check
