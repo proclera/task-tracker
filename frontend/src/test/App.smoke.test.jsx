@@ -84,4 +84,15 @@ describe('App smoke tests', () => {
 
     expect(await screen.findByText('Login Screen')).toBeInTheDocument();
   });
+
+  it('redirects signed-in managers to the manager dashboard', async () => {
+    mockUseAuth.mockReturnValue({
+      user: { id: 2, role: 'manager' },
+      loading: false
+    });
+
+    renderApp(['/login']);
+
+    expect(await screen.findByText('Manager Dashboard Screen')).toBeInTheDocument();
+  });
 });

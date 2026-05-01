@@ -4,6 +4,7 @@ import { TaskList } from '../components/TaskList';
 import { CreateTaskForm } from '../components/CreateTaskForm';
 import { NotificationBellModern } from '../components/NotificationBellModern';
 import { OverdueTasksAlert } from '../components/OverdueTasksAlert';
+import { AttendancePanel } from '../components/AttendancePanel';
 
 export const ManagerDashboard = () => {
   const { user, logout } = useAuth();
@@ -26,6 +27,7 @@ export const ManagerDashboard = () => {
 
       <main style={styles.main}>
         <OverdueTasksAlert user={user} endpoint={`/tasks?assignee_id=${user.id}`} />
+        <AttendancePanel />
         <CreateTaskForm onSuccess={handleTaskCreated} />
         <TaskList
           user={user}
