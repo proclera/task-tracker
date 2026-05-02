@@ -29,6 +29,12 @@ const formatCurrency = (value) => new Intl.NumberFormat('en-US', {
   maximumFractionDigits: 2
 }).format(Number(value || 0));
 
+const formatShortDate = (value) => new Intl.DateTimeFormat('en-US', {
+  month: 'short',
+  day: 'numeric',
+  timeZone: 'UTC'
+}).format(new Date(`${value}T00:00:00.000Z`));
+
 const downloadCsv = (report, filters) => {
   const header = [
     'Employee',
@@ -81,6 +87,7 @@ export const AdminReports = () => {
   const [report, setReport] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [activeView, setActiveView] = useState('team');
 
   const fetchReport = async (nextFilters = filters) => {
     try {
@@ -120,9 +127,9 @@ export const AdminReports = () => {
     <section style={styles.container}>
       <div style={styles.hero}>
         <div>
-          <h2 style={styles.title}>Team Reports</h2>
+          <h2 style={styles.title}>Reports</h2>
           <p style={styles.subtitle}>
-            Combine task delivery, attendance, and tracked time into one exportable admin view.
+            Review team performance and monthly order-finance movement from one admin workspace.
           </p>
         </div>
 
@@ -157,9 +164,26 @@ export const AdminReports = () => {
         </form>
       </div>
 
+      <div style={styles.subnav}>
+        <button
+          type="button"
+          style={{ ...styles.subnavButton, ...(activeView === 'team' ? styles.subnavButtonActive : {}) }}
+          onClick={() => setActiveView('team')}
+        >
+          Team Reports
+        </button>
+        <button
+          type="button"
+          style={{ ...styles.subnavButton, ...(activeView === 'finance' ? styles.subnavButtonActive : {}) }}
+          onClick={() => setActiveView('finance')}
+        >
+          Monthly Order and Finance Trend
+        </button>
+      </div>
+
       {error && <div style={styles.error}>{error}</div>}
 
-      {report && (
+      {report && activeView === 'team' && (
         <>
           <div style={styles.cardGrid}>
             <MetricCard label="Tasks Created" value={report.summary.tasksCreated} accent="#1d4ed8" />
@@ -168,10 +192,6 @@ export const AdminReports = () => {
             <MetricCard label="Tracked Time" value={formatMinutes(report.summary.totalTrackedMinutes)} accent="#7c3aed" />
             <MetricCard label="Attendance Days" value={report.summary.attendanceDays} accent="#0f766e" />
             <MetricCard label="Late Check-ins" value={report.summary.lateDays} accent="#be123c" />
-            <MetricCard label="Today's Order" value={report.summary.todaysOrders} accent="#2563eb" />
-            <MetricCard label="Order Processed" value={report.summary.ordersProcessed} accent="#0f9f6e" />
-            <MetricCard label="Today's Spending" value={formatCurrency(report.summary.todaysSpending)} accent="#ea580c" />
-            <MetricCard label="Today's Earning" value={formatCurrency(report.summary.todaysEarning)} accent="#059669" />
           </div>
 
           <div style={styles.twoColumn}>
@@ -182,49 +202,6 @@ export const AdminReports = () => {
               <BreakdownList items={report.tasksByPriority} />
             </Panel>
           </div>
-
-          <Panel title="Monthly Order and Finance Trend">
-            {report.checkoutMetrics?.dailySeries?.length ? (
-              <div style={styles.chartGrid}>
-                <MiniBarChart
-                  title="Today's Order"
-                  color="#2563eb"
-                  items={report.checkoutMetrics.dailySeries.map((item) => ({
-                    label: item.date.slice(5),
-                    value: item.todaysOrders
-                  }))}
-                />
-                <MiniBarChart
-                  title="Order Processed"
-                  color="#0f9f6e"
-                  items={report.checkoutMetrics.dailySeries.map((item) => ({
-                    label: item.date.slice(5),
-                    value: item.ordersProcessed
-                  }))}
-                />
-                <MiniBarChart
-                  title="Today's Spending"
-                  color="#ea580c"
-                  items={report.checkoutMetrics.dailySeries.map((item) => ({
-                    label: item.date.slice(5),
-                    value: item.todaysSpending
-                  }))}
-                  formatter={formatCurrency}
-                />
-                <MiniBarChart
-                  title="Today's Earning"
-                  color="#059669"
-                  items={report.checkoutMetrics.dailySeries.map((item) => ({
-                    label: item.date.slice(5),
-                    value: item.todaysEarning
-                  }))}
-                  formatter={formatCurrency}
-                />
-              </div>
-            ) : (
-              <div style={styles.empty}>No checkout metric data in this range.</div>
-            )}
-          </Panel>
 
           <Panel title="Team Performance">
             {report.teamPerformance.length === 0 ? (
@@ -297,6 +274,70 @@ export const AdminReports = () => {
           </Panel>
         </>
       )}
+
+      {report && activeView === 'finance' && (
+        <>
+          <div style={styles.financeHero}>
+            <div>
+              <h3 style={styles.financeTitle}>Monthly Order and Finance Trend</h3>
+              <p style={styles.financeSubtitle}>
+                Read daily movement more clearly with focused cards for orders, processed work, spending, and earning.
+              </p>
+            </div>
+            <div style={styles.rangeBadge}>
+              {formatShortDate(filters.start_date)} - {formatShortDate(filters.end_date)}
+            </div>
+          </div>
+
+          <div style={styles.financeSummaryGrid}>
+            <FinanceSummaryCard label="Today's Order" value={report.summary.todaysOrders} accent="#2563eb" />
+            <FinanceSummaryCard label="Order Processed" value={report.summary.ordersProcessed} accent="#0f9f6e" />
+            <FinanceSummaryCard label="Today's Spending" value={formatCurrency(report.summary.todaysSpending)} accent="#ea580c" />
+            <FinanceSummaryCard label="Today's Earning" value={formatCurrency(report.summary.todaysEarning)} accent="#059669" />
+          </div>
+
+          {report.checkoutMetrics?.dailySeries?.length ? (
+            <div style={styles.financeChartsGrid}>
+              <TrendPanel
+                title="Today's Order"
+                accent="#2563eb"
+                items={report.checkoutMetrics.dailySeries.map((item) => ({
+                  label: formatShortDate(item.date),
+                  value: item.todaysOrders
+                }))}
+              />
+              <TrendPanel
+                title="Order Processed"
+                accent="#0f9f6e"
+                items={report.checkoutMetrics.dailySeries.map((item) => ({
+                  label: formatShortDate(item.date),
+                  value: item.ordersProcessed
+                }))}
+              />
+              <TrendPanel
+                title="Today's Spending"
+                accent="#ea580c"
+                formatter={formatCurrency}
+                items={report.checkoutMetrics.dailySeries.map((item) => ({
+                  label: formatShortDate(item.date),
+                  value: item.todaysSpending
+                }))}
+              />
+              <TrendPanel
+                title="Today's Earning"
+                accent="#059669"
+                formatter={formatCurrency}
+                items={report.checkoutMetrics.dailySeries.map((item) => ({
+                  label: formatShortDate(item.date),
+                  value: item.todaysEarning
+                }))}
+              />
+            </div>
+          ) : (
+            <div style={styles.empty}>No checkout metric data in this range.</div>
+          )}
+        </>
+      )}
     </section>
   );
 };
@@ -305,6 +346,14 @@ const MetricCard = ({ label, value, accent }) => (
   <div style={{ ...styles.metricCard, borderTop: `4px solid ${accent}` }}>
     <div style={styles.metricLabel}>{label}</div>
     <div style={styles.metricValue}>{value}</div>
+  </div>
+);
+
+const FinanceSummaryCard = ({ label, value, accent }) => (
+  <div style={styles.financeSummaryCard}>
+    <div style={{ ...styles.financeAccent, background: accent }} />
+    <div style={styles.financeSummaryLabel}>{label}</div>
+    <div style={styles.financeSummaryValue}>{value}</div>
   </div>
 );
 
@@ -332,26 +381,29 @@ const BreakdownList = ({ items }) => {
   );
 };
 
-const MiniBarChart = ({ title, items, color, formatter = (value) => value }) => {
+const TrendPanel = ({ title, items, accent, formatter = (value) => value }) => {
   const maxValue = Math.max(...items.map((item) => item.value), 1);
 
   return (
-    <div style={styles.chartCard}>
-      <h4 style={styles.chartTitle}>{title}</h4>
-      <div style={styles.chartBars}>
+    <div style={styles.trendPanel}>
+      <div style={styles.trendPanelTop}>
+        <h4 style={styles.trendTitle}>{title}</h4>
+        <span style={{ ...styles.trendDot, background: accent }} />
+      </div>
+      <div style={styles.trendRows}>
         {items.map((item) => (
-          <div key={`${title}-${item.label}`} style={styles.chartItem}>
-            <div style={styles.chartValue}>{formatter(item.value)}</div>
-            <div style={styles.chartBarTrack}>
+          <div key={`${title}-${item.label}`} style={styles.trendRow}>
+            <div style={styles.trendDate}>{item.label}</div>
+            <div style={styles.trendBarTrack}>
               <div
                 style={{
-                  ...styles.chartBarFill,
-                  background: color,
+                  ...styles.trendBarFill,
+                  background: accent,
                   width: `${Math.max((item.value / maxValue) * 100, item.value > 0 ? 8 : 0)}%`
                 }}
               />
             </div>
-            <div style={styles.chartLabel}>{item.label}</div>
+            <div style={styles.trendValue}>{formatter(item.value)}</div>
           </div>
         ))}
       </div>
@@ -381,8 +433,28 @@ const styles = {
   subtitle: {
     margin: '0.45rem 0 0',
     color: '#52607a',
-    maxWidth: '640px',
+    maxWidth: '680px',
     lineHeight: 1.5
+  },
+  subnav: {
+    display: 'flex',
+    gap: '0.75rem',
+    flexWrap: 'wrap'
+  },
+  subnavButton: {
+    padding: '0.8rem 1.1rem',
+    borderRadius: '14px',
+    border: '1px solid #d3dff3',
+    background: '#f8fbff',
+    color: '#35506f',
+    fontWeight: 700,
+    cursor: 'pointer'
+  },
+  subnavButtonActive: {
+    background: 'linear-gradient(135deg, #173a74, #1d4ed8)',
+    color: 'white',
+    borderColor: '#1d4ed8',
+    boxShadow: '0 14px 28px rgba(29, 78, 216, 0.22)'
   },
   filterBar: {
     display: 'flex',
@@ -468,52 +540,125 @@ const styles = {
     gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))',
     gap: '1rem'
   },
-  chartGrid: {
-    display: 'grid',
-    gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))',
-    gap: '1rem'
-  },
-  chartCard: {
-    padding: '1rem',
-    borderRadius: '18px',
-    background: '#f8fbff',
-    border: '1px solid #e1ebf8'
-  },
-  chartTitle: {
-    margin: '0 0 0.9rem 0',
-    color: '#183153'
-  },
-  chartBars: {
+  financeHero: {
     display: 'flex',
-    flexDirection: 'column',
-    gap: '0.6rem'
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+    gap: '1rem',
+    flexWrap: 'wrap',
+    padding: '1.25rem',
+    borderRadius: '22px',
+    background: 'linear-gradient(135deg, #112c57, #1b4f95)',
+    color: 'white'
   },
-  chartItem: {
-    display: 'grid',
-    gridTemplateColumns: '56px 1fr 44px',
-    gap: '0.55rem',
-    alignItems: 'center'
+  financeTitle: {
+    margin: 0,
+    fontSize: '1.5rem'
   },
-  chartValue: {
-    fontSize: '0.8rem',
-    color: '#44556f',
+  financeSubtitle: {
+    margin: '0.45rem 0 0',
+    color: 'rgba(255,255,255,0.88)',
+    maxWidth: '640px',
+    lineHeight: 1.5
+  },
+  rangeBadge: {
+    padding: '0.65rem 0.9rem',
+    borderRadius: '999px',
+    background: 'rgba(255,255,255,0.14)',
     fontWeight: 700
   },
-  chartBarTrack: {
+  financeSummaryGrid: {
+    display: 'grid',
+    gridTemplateColumns: 'repeat(auto-fit, minmax(210px, 1fr))',
+    gap: '1rem'
+  },
+  financeSummaryCard: {
+    position: 'relative',
+    padding: '1.15rem 1.15rem 1.2rem',
+    borderRadius: '20px',
+    background: 'white',
+    border: '1px solid rgba(122, 145, 184, 0.14)',
+    boxShadow: '0 18px 42px rgba(31, 45, 76, 0.08)',
+    overflow: 'hidden'
+  },
+  financeAccent: {
+    position: 'absolute',
+    inset: '0 auto 0 0',
+    width: '5px'
+  },
+  financeSummaryLabel: {
+    marginLeft: '0.35rem',
+    color: '#61748f',
+    fontWeight: 700,
+    fontSize: '0.9rem'
+  },
+  financeSummaryValue: {
+    marginLeft: '0.35rem',
+    marginTop: '0.7rem',
+    fontSize: '2rem',
+    color: '#163051',
+    fontWeight: 800
+  },
+  financeChartsGrid: {
+    display: 'grid',
+    gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))',
+    gap: '1rem'
+  },
+  trendPanel: {
+    padding: '1.15rem',
+    borderRadius: '22px',
+    background: 'white',
+    border: '1px solid rgba(122, 145, 184, 0.14)',
+    boxShadow: '0 18px 42px rgba(31, 45, 76, 0.08)'
+  },
+  trendPanelTop: {
+    display: 'flex',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    gap: '0.75rem',
+    marginBottom: '1rem'
+  },
+  trendTitle: {
+    margin: 0,
+    color: '#183153'
+  },
+  trendDot: {
+    width: '12px',
+    height: '12px',
+    borderRadius: '50%'
+  },
+  trendRows: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: '0.75rem'
+  },
+  trendRow: {
+    display: 'grid',
+    gridTemplateColumns: '78px 1fr 78px',
+    gap: '0.85rem',
+    alignItems: 'center'
+  },
+  trendDate: {
+    color: '#667892',
+    fontSize: '0.82rem',
+    fontWeight: 700
+  },
+  trendBarTrack: {
     width: '100%',
-    height: '10px',
-    background: '#e5edf8',
+    height: '12px',
+    background: '#e9eff8',
     borderRadius: '999px',
     overflow: 'hidden'
   },
-  chartBarFill: {
+  trendBarFill: {
     height: '100%',
     borderRadius: '999px'
   },
-  chartLabel: {
-    fontSize: '0.78rem',
-    color: '#6a7b92',
-    textAlign: 'right'
+  trendValue: {
+    textAlign: 'right',
+    color: '#183153',
+    fontWeight: 800,
+    fontSize: '0.85rem'
   },
   panel: {
     padding: '1.2rem',
