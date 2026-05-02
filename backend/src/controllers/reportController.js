@@ -317,7 +317,8 @@ const getBreakdowns = async (db, startDate, endDate) => {
        ORDER BY activity_at DESC
        LIMIT 12`,
       [startDate, endDate, startDate, endDate, startDate, endDate]
-    )
+    ),
+    getCheckoutMetricRows(db, startDate, endDate)
   ]);
 
   const checkoutMetrics = buildCheckoutMetrics(checkoutMetricRows);
