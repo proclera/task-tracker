@@ -3,6 +3,12 @@ const { getRow, getRows } = require('../utils/sql');
 const { isPlainObject, toPositiveInt } = require('../utils/validation');
 const { awardPoints, refreshStreakFromAttendance, awardBadges } = require('../services/gamificationService');
 const { createSimplePdf } = require('../utils/pdf');
+const { getManagedUsers } = require('../utils/permissions');
+const {
+  ATTENDANCE_CHECKOUT_FIELDS,
+  normalizeAssignedFieldKeys,
+  validateCheckoutDetails
+} = require('../utils/attendanceCheckout');
 
 const ATTENDANCE_SELECT = `
   SELECT ar.*, u.first_name || ' ' || u.last_name as user_name, u.email
@@ -72,10 +78,29 @@ const getMonthlyAttendanceRecords = async (db, monthRange, userId = null) => {
   );
 };
 
+const getCheckoutAssignedFields = async (db, userId) => {
+  const config = await getRow(
+    db,
+    `SELECT assigned_fields
+     FROM attendance_checkout_configs
+     WHERE employee_user_id = ?`,
+    [userId]
+  );
+
+  return normalizeAssignedFieldKeys(config?.assigned_fields);
+};
+
+const getCheckoutConfigPayload = (assignedFields) => ({
+  definitions: ATTENDANCE_CHECKOUT_FIELDS,
+  assignedFields,
+  requiresStructuredCheckout: assignedFields.length > 0
+});
+
 exports.getMyAttendanceToday = async (req, res) => {
   try {
     const db = await getDB();
     const attendanceDate = getTodayDate();
+    const assignedFields = await getCheckoutAssignedFields(db, req.user.id);
 
     const attendance = await getRow(
       db,
@@ -83,7 +108,10 @@ exports.getMyAttendanceToday = async (req, res) => {
       [req.user.id, attendanceDate]
     );
 
-    res.json({ attendance: attendance || null });
+    res.json({
+      attendance: attendance || null,
+      checkoutConfig: getCheckoutConfigPayload(assignedFields)
+    });
   } catch (error) {
     console.error('Get attendance today error:', error);
     res.status(500).json({ error: 'Failed to fetch attendance status' });
@@ -164,12 +192,27 @@ exports.checkOut = async (req, res) => {
       return res.status(400).json({ error: 'You are already checked out' });
     }
 
-    if (!workSummary) {
-      return res.status(400).json({ error: 'Please add a short work summary before checking out' });
-    }
+    const assignedFields = await getCheckoutAssignedFields(db, req.user.id);
+    let nextWorkSummary = workSummary;
+    let checkoutDetails = null;
 
-    if (workSummary.length > 1000) {
-      return res.status(400).json({ error: 'Work summary must be 1000 characters or less' });
+    if (assignedFields.length > 0) {
+      const validated = validateCheckoutDetails(req.body?.checkout_details, assignedFields);
+
+      if (validated.error) {
+        return res.status(400).json({ error: validated.error });
+      }
+
+      checkoutDetails = validated.details;
+      nextWorkSummary = validated.summaryText;
+    } else {
+      if (!workSummary) {
+        return res.status(400).json({ error: 'Please add a short work summary before checking out' });
+      }
+
+      if (workSummary.length > 1000) {
+        return res.status(400).json({ error: 'Work summary must be 1000 characters or less' });
+      }
     }
 
     const now = new Date();
@@ -177,9 +220,9 @@ exports.checkOut = async (req, res) => {
 
     await db.run(
       `UPDATE attendance_records
-       SET check_out_time = CURRENT_TIMESTAMP, total_minutes = ?, work_summary = ?
+       SET check_out_time = CURRENT_TIMESTAMP, total_minutes = ?, work_summary = ?, checkout_details = ?
        WHERE id = ?`,
-      [totalMinutes, workSummary, id]
+      [totalMinutes, nextWorkSummary, checkoutDetails, id]
     );
 
     await saveDB();
@@ -189,6 +232,138 @@ exports.checkOut = async (req, res) => {
   } catch (error) {
     console.error('Check out error:', error);
     res.status(500).json({ error: 'Failed to check out' });
+  }
+};
+
+exports.getManagerCheckoutConfigs = async (req, res) => {
+  try {
+    const db = await getDB();
+    const monthRange = getMonthRange(req.query.month || getCurrentMonthKey());
+
+    if (!monthRange) {
+      return res.status(400).json({ error: 'month must be in YYYY-MM format' });
+    }
+
+    const [managedUsers, configRows, recentRecords] = await Promise.all([
+      getManagedUsers(db, req.user.id),
+      getRows(
+        db,
+        `SELECT employee_user_id, assigned_fields
+         FROM attendance_checkout_configs
+         WHERE manager_id = ?`,
+        [req.user.id]
+      ),
+      getRows(
+        db,
+        `${ATTENDANCE_SELECT}
+         LEFT JOIN employee_profiles ep ON ep.user_id = ar.user_id
+         WHERE (
+           ar.user_id = ?
+           OR ep.manager_id = ?
+         )
+         AND ar.attendance_date >= ?
+         AND ar.attendance_date < ?
+         ORDER BY ar.attendance_date DESC, ar.check_in_time DESC`,
+        [req.user.id, req.user.id, monthRange.startDate, monthRange.endDateExclusive]
+      )
+    ]);
+
+    const employees = [
+      {
+        id: req.user.id,
+        email: req.user.email,
+        role: req.user.role,
+        first_name: req.user.firstName,
+        last_name: req.user.lastName,
+        isSelf: true
+      },
+      ...managedUsers.map((user) => ({
+        ...user,
+        isSelf: false
+      }))
+    ];
+
+    const configMap = new Map(
+      configRows.map((row) => [row.employee_user_id, normalizeAssignedFieldKeys(row.assigned_fields)])
+    );
+
+    res.json({
+      definitions: ATTENDANCE_CHECKOUT_FIELDS,
+      period: {
+        month: monthRange.key,
+        monthLabel: formatMonthLabel(monthRange.key)
+      },
+      employees: employees.map((employee) => ({
+        ...employee,
+        assignedFields: configMap.get(employee.id) || []
+      })),
+      recentRecords
+    });
+  } catch (error) {
+    console.error('Get manager checkout configs error:', error);
+    res.status(500).json({ error: 'Failed to fetch manager attendance setup' });
+  }
+};
+
+exports.updateManagerCheckoutConfig = async (req, res) => {
+  try {
+    if (!isPlainObject(req.body)) {
+      return res.status(400).json({ error: 'Invalid request body' });
+    }
+
+    const db = await getDB();
+    const employeeId = toPositiveInt(req.params.employeeId);
+    const assignedFields = normalizeAssignedFieldKeys(req.body?.assigned_fields);
+
+    if (!employeeId) {
+      return res.status(400).json({ error: 'Invalid employee id' });
+    }
+
+    const employee = await getRow(
+      db,
+      `SELECT u.id, u.first_name, u.last_name, u.email, u.role,
+              CASE WHEN u.id = ? THEN TRUE ELSE FALSE END as is_self
+       FROM users u
+       WHERE u.id = ?
+         AND (
+           u.id = ?
+           OR EXISTS (
+             SELECT 1
+             FROM employee_profiles ep
+             WHERE ep.user_id = u.id
+               AND ep.manager_id = ?
+           )
+         )`,
+      [req.user.id, employeeId, req.user.id, req.user.id]
+    );
+
+    if (!employee) {
+      return res.status(404).json({ error: 'Team member not found in your setup' });
+    }
+
+    await db.run(
+      `INSERT INTO attendance_checkout_configs (employee_user_id, manager_id, assigned_fields, updated_at)
+       VALUES (?, ?, ?, CURRENT_TIMESTAMP)
+       ON CONFLICT (employee_user_id)
+       DO UPDATE SET
+         manager_id = EXCLUDED.manager_id,
+         assigned_fields = EXCLUDED.assigned_fields,
+         updated_at = CURRENT_TIMESTAMP`,
+      [employeeId, req.user.id, JSON.stringify(assignedFields)]
+    );
+
+    await saveDB();
+
+    res.json({
+      employee: {
+        ...employee,
+        assignedFields
+      },
+      definitions: ATTENDANCE_CHECKOUT_FIELDS
+    });
+  } catch (error) {
+    console.error('Update manager checkout config error:', error);
+    res.status(500).json({ error: 'Failed to update employee attendance setup' });
   }
 };
 

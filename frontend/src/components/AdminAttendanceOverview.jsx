@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import api from '../lib/api';
 import { formatServerDateTime, formatServerTime } from '../lib/datetime';
+import { formatCheckoutDetailsEntries } from '../lib/attendanceCheckout';
 
 const getCurrentMonthValue = () => new Date().toISOString().slice(0, 7);
 
@@ -121,7 +122,18 @@ export const AdminAttendanceOverview = () => {
                   <span>Out: {record.check_out_time ? formatServerTime(record.check_out_time) : 'In progress'}</span>
                   <span>{record.total_minutes || 0} min</span>
                 </div>
-                {record.work_summary && <div style={styles.recordSummary}>{record.work_summary}</div>}
+                {record.checkout_details ? (
+                  <div style={styles.detailGrid}>
+                    {formatCheckoutDetailsEntries(record.checkout_details).map((entry) => (
+                      <div key={entry.key} style={styles.detailItem}>
+                        <div style={styles.detailLabel}>{entry.label}</div>
+                        <div style={styles.detailValue}>{entry.value}</div>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  record.work_summary && <div style={styles.recordSummary}>{record.work_summary}</div>
+                )}
               </div>
               <div style={styles.recordMeta}>
                 <span>{record.status}</span>
@@ -276,6 +288,26 @@ const styles = {
     color: '#54657f',
     lineHeight: 1.5,
     whiteSpace: 'pre-wrap'
+  },
+  detailGrid: {
+    display: 'grid',
+    gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))',
+    gap: '0.7rem',
+    marginTop: '0.65rem'
+  },
+  detailItem: {
+    padding: '0.75rem 0.85rem',
+    borderRadius: '12px',
+    background: '#f4f7fb'
+  },
+  detailLabel: {
+    color: '#667892',
+    fontSize: '0.82rem',
+    marginBottom: '0.2rem'
+  },
+  detailValue: {
+    color: '#183153',
+    fontWeight: 700
   },
   recordMeta: {
     display: 'flex',

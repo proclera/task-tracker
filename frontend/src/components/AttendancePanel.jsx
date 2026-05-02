@@ -1,16 +1,110 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import api from '../lib/api';
 import { useToast } from '../context/ToastContext';
 import { formatServerDateTime, formatServerTime } from '../lib/datetime';
+import {
+  ATTENDANCE_CHECKOUT_FIELDS,
+  createEmptyCheckoutDetails,
+  formatCheckoutDetailsEntries,
+  getAssignedCheckoutFields
+} from '../lib/attendanceCheckout';
+
+const getInitialCheckoutConfig = () => ({
+  definitions: ATTENDANCE_CHECKOUT_FIELDS,
+  assignedFields: [],
+  requiresStructuredCheckout: false
+});
+
+const getCheckoutValidationError = (fields, details, workSummary) => {
+  if (fields.length === 0) {
+    return workSummary.trim() ? '' : 'Please add a short work summary before checking out';
+  }
+
+  for (const field of fields) {
+    const value = details[field.key];
+
+    if (field.type === 'number') {
+      const parsed = Number(String(value ?? '').trim());
+
+      if (!Number.isInteger(parsed) || parsed < field.min || parsed > field.max) {
+        return `${field.label} must be a number between ${field.min} and ${field.max}`;
+      }
+
+      continue;
+    }
+
+    if (field.type === 'decimal') {
+      const parsed = Number(String(value ?? '').trim());
+
+      if (!Number.isFinite(parsed) || parsed < field.min || parsed > field.max) {
+        return `${field.label} must be a valid number ${field.min} or greater`;
+      }
+
+      continue;
+    }
+
+    if (field.type === 'boolean_choice') {
+      if (!field.options.includes(String(value ?? '').trim().toLowerCase())) {
+        return `${field.label} must be either yes or no`;
+      }
+
+      continue;
+    }
+
+    if (field.type === 'text') {
+      const normalized = String(value ?? '').trim();
+
+      if (!normalized) {
+        return `${field.label} is required`;
+      }
+
+      if (normalized.length > field.maxLength) {
+        return `${field.label} must be ${field.maxLength} characters or less`;
+      }
+    }
+  }
+
+  return '';
+};
+
+const CheckoutDetailsSummary = ({ details, definitions }) => {
+  const entries = formatCheckoutDetailsEntries(details, definitions);
+
+  if (entries.length === 0) {
+    return null;
+  }
+
+  return (
+    <div style={styles.summaryGrid}>
+      {entries.map((entry) => (
+        <div key={entry.key} style={styles.summaryItem}>
+          <div style={styles.summaryItemLabel}>{entry.label}</div>
+          <div style={styles.summaryItemValue}>{entry.value}</div>
+        </div>
+      ))}
+    </div>
+  );
+};
 
 export const AttendancePanel = () => {
   const [today, setToday] = useState(null);
   const [history, setHistory] = useState([]);
   const [workSummary, setWorkSummary] = useState('');
+  const [checkoutConfig, setCheckoutConfig] = useState(getInitialCheckoutConfig());
+  const [checkoutDetails, setCheckoutDetails] = useState({});
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
   const { showToast } = useToast();
+
+  const assignedFields = useMemo(
+    () => getAssignedCheckoutFields(checkoutConfig.assignedFields, checkoutConfig.definitions),
+    [checkoutConfig]
+  );
+  const checkoutValidationError = useMemo(
+    () => getCheckoutValidationError(assignedFields, checkoutDetails, workSummary),
+    [assignedFields, checkoutDetails, workSummary]
+  );
 
   const loadAttendance = async () => {
     try {
@@ -21,9 +115,13 @@ export const AttendancePanel = () => {
         api.get('/attendance/me/history')
       ]);
 
+      const nextConfig = todayResponse.data.checkoutConfig || getInitialCheckoutConfig();
+
       setToday(todayResponse.data.attendance || null);
       setHistory(historyResponse.data.records || []);
-      setWorkSummary(todayResponse.data.attendance?.check_out_time ? '' : '');
+      setCheckoutConfig(nextConfig);
+      setWorkSummary('');
+      setCheckoutDetails(createEmptyCheckoutDetails(nextConfig.assignedFields || []));
     } catch (err) {
       setError(err.response?.data?.error || 'Failed to load attendance');
     } finally {
@@ -52,17 +150,26 @@ export const AttendancePanel = () => {
     }
   };
 
+  const handleDetailChange = (key, value) => {
+    setCheckoutDetails((current) => ({
+      ...current,
+      [key]: value
+    }));
+  };
+
   const handleCheckOut = async () => {
-    if (!today) return;
+    if (!today || checkoutValidationError) return;
 
     try {
       setSubmitting(true);
       setError('');
       const response = await api.patch(`/attendance/${today.id}/check-out`, {
-        work_summary: workSummary.trim()
+        work_summary: workSummary.trim(),
+        checkout_details: checkoutDetails
       });
       setToday(response.data.attendance);
       setWorkSummary('');
+      setCheckoutDetails(createEmptyCheckoutDetails(checkoutConfig.assignedFields || []));
       showToast('Checked out successfully', 'success');
       loadAttendance();
     } catch (err) {
@@ -99,13 +206,71 @@ export const AttendancePanel = () => {
                 {today.check_out_time ? ` | Check-out: ${formatServerDateTime(today.check_out_time)}` : ''}
               </div>
             )}
-            {today?.check_out_time && today.work_summary && (
-              <div style={styles.summaryBox}>
-                <div style={styles.summaryLabel}>Today's work summary</div>
-                <div style={styles.summaryText}>{today.work_summary}</div>
+            {today?.check_out_time && (
+              <>
+                <CheckoutDetailsSummary
+                  details={today.checkout_details}
+                  definitions={checkoutConfig.definitions}
+                />
+                {!today.checkout_details && today.work_summary && (
+                  <div style={styles.summaryBox}>
+                    <div style={styles.summaryLabel}>Today's work summary</div>
+                    <div style={styles.summaryText}>{today.work_summary}</div>
+                  </div>
+                )}
+              </>
+            )}
+            {today && !today.check_out_time && assignedFields.length > 0 && (
+              <div style={styles.formGrid}>
+                {assignedFields.map((field) => (
+                  <div key={field.key} style={styles.fieldBlock}>
+                    <label style={styles.summaryLabel} htmlFor={`checkout-${field.key}`}>
+                      {field.label}
+                    </label>
+                    {field.type === 'number' || field.type === 'decimal' ? (
+                      <input
+                        id={`checkout-${field.key}`}
+                        type="number"
+                        min={field.min}
+                        max={field.max}
+                        step={field.type === 'decimal' ? '0.01' : '1'}
+                        inputMode="numeric"
+                        value={checkoutDetails[field.key] || ''}
+                        onChange={(e) => handleDetailChange(field.key, e.target.value)}
+                        style={styles.inlineInput}
+                        placeholder={field.type === 'decimal' ? '0.00' : `${field.min}-${field.max}`}
+                      />
+                    ) : field.type === 'boolean_choice' ? (
+                      <div style={styles.choiceRow}>
+                        {field.options.map((option) => (
+                          <label key={option} style={styles.choiceLabel}>
+                            <input
+                              type="radio"
+                              name={field.key}
+                              value={option}
+                              checked={checkoutDetails[field.key] === option}
+                              onChange={(e) => handleDetailChange(field.key, e.target.value)}
+                            />
+                            <span style={styles.choiceText}>{option.toUpperCase()}</span>
+                          </label>
+                        ))}
+                      </div>
+                    ) : (
+                      <textarea
+                        id={`checkout-${field.key}`}
+                        value={checkoutDetails[field.key] || ''}
+                        onChange={(e) => handleDetailChange(field.key, e.target.value)}
+                        style={styles.summaryInput}
+                        rows={3}
+                        maxLength={field.maxLength}
+                        placeholder="Add notes"
+                      />
+                    )}
+                  </div>
+                ))}
               </div>
             )}
-            {today && !today.check_out_time && (
+            {today && !today.check_out_time && assignedFields.length === 0 && (
               <div style={styles.summaryForm}>
                 <label style={styles.summaryLabel} htmlFor="checkout-summary">
                   What did you complete today?
@@ -127,7 +292,7 @@ export const AttendancePanel = () => {
               type="button"
               style={{ ...styles.actionBtn, ...styles.checkoutBtn }}
               onClick={handleCheckOut}
-              disabled={submitting || !workSummary.trim()}
+              disabled={submitting || Boolean(checkoutValidationError)}
             >
               {submitting ? 'Checking out...' : 'Check Out'}
             </button>
@@ -142,6 +307,9 @@ export const AttendancePanel = () => {
             </button>
           )}
         </div>
+        {today && !today.check_out_time && checkoutValidationError && (
+          <div style={styles.helperError}>{checkoutValidationError}</div>
+        )}
       </div>
 
       <div style={styles.historyCard}>
@@ -160,7 +328,14 @@ export const AttendancePanel = () => {
                 </span>
                 <span>{record.total_minutes || 0} min</span>
               </div>
-              {record.work_summary && <div style={styles.recordSummary}>{record.work_summary}</div>}
+              {record.checkout_details ? (
+                <CheckoutDetailsSummary
+                  details={record.checkout_details}
+                  definitions={checkoutConfig.definitions}
+                />
+              ) : (
+                record.work_summary && <div style={styles.recordSummary}>{record.work_summary}</div>
+              )}
             </div>
           ))
         )}
@@ -265,6 +440,42 @@ const styles = {
     lineHeight: 1.55,
     whiteSpace: 'pre-wrap'
   },
+  formGrid: {
+    display: 'grid',
+    gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))',
+    gap: '0.9rem',
+    marginTop: '1rem'
+  },
+  fieldBlock: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: '0.45rem'
+  },
+  inlineInput: {
+    width: '100%',
+    borderRadius: '12px',
+    border: '1px solid #d4dceb',
+    padding: '0.8rem 0.9rem',
+    fontSize: '0.95rem',
+    color: '#183153'
+  },
+  choiceRow: {
+    display: 'flex',
+    flexWrap: 'wrap',
+    gap: '0.75rem'
+  },
+  choiceLabel: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '0.4rem',
+    padding: '0.75rem 0.9rem',
+    borderRadius: '12px',
+    background: '#f4f7fb',
+    color: '#183153'
+  },
+  choiceText: {
+    fontWeight: 700
+  },
   actionBtn: {
     padding: '0.8rem 1.1rem',
     border: 'none',
@@ -288,6 +499,11 @@ const styles = {
   historyTitle: {
     margin: '0 0 0.9rem 0',
     color: '#183153'
+  },
+  helperError: {
+    marginTop: '0.9rem',
+    color: '#b42318',
+    fontWeight: 600
   },
   empty: {
     color: '#667892',
@@ -318,5 +534,25 @@ const styles = {
     color: '#54657f',
     lineHeight: 1.5,
     whiteSpace: 'pre-wrap'
+  },
+  summaryGrid: {
+    display: 'grid',
+    gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))',
+    gap: '0.75rem',
+    marginTop: '0.9rem'
+  },
+  summaryItem: {
+    padding: '0.8rem 0.9rem',
+    borderRadius: '14px',
+    background: 'rgba(238, 244, 255, 0.95)'
+  },
+  summaryItemLabel: {
+    fontSize: '0.82rem',
+    color: '#667892',
+    marginBottom: '0.25rem'
+  },
+  summaryItemValue: {
+    color: '#183153',
+    fontWeight: 700
   }
 };

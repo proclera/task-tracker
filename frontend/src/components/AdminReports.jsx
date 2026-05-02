@@ -24,27 +24,42 @@ const formatMinutes = (minutes) => {
   return `${hours}h ${remainder}m`;
 };
 
+const formatCurrency = (value) => new Intl.NumberFormat('en-US', {
+  minimumFractionDigits: 2,
+  maximumFractionDigits: 2
+}).format(Number(value || 0));
+
 const downloadCsv = (report, filters) => {
   const header = [
     'Employee',
     'Email',
+    'Role',
     'Assigned Tasks',
     'Completed Tasks',
     'Tracked Minutes',
     'Time Entries',
     'Attendance Days',
-    'Late Days'
+    'Late Days',
+    "Today's Order",
+    'Order Processed',
+    "Today's Spending",
+    "Today's Earning"
   ];
 
   const rows = report.teamPerformance.map((employee) => ([
     employee.name,
     employee.email,
+    employee.role,
     employee.assignedTasks,
     employee.completedTasks,
     employee.trackedMinutes,
     employee.timeEntries,
     employee.attendanceDays,
-    employee.lateDays
+    employee.lateDays,
+    employee.todaysOrders,
+    employee.ordersProcessed,
+    employee.todaysSpending,
+    employee.todaysEarning
   ]));
 
   const escapeCell = (value) => `"${String(value ?? '').replaceAll('"', '""')}"`;
@@ -153,6 +168,10 @@ export const AdminReports = () => {
             <MetricCard label="Tracked Time" value={formatMinutes(report.summary.totalTrackedMinutes)} accent="#7c3aed" />
             <MetricCard label="Attendance Days" value={report.summary.attendanceDays} accent="#0f766e" />
             <MetricCard label="Late Check-ins" value={report.summary.lateDays} accent="#be123c" />
+            <MetricCard label="Today's Order" value={report.summary.todaysOrders} accent="#2563eb" />
+            <MetricCard label="Order Processed" value={report.summary.ordersProcessed} accent="#0f9f6e" />
+            <MetricCard label="Today's Spending" value={formatCurrency(report.summary.todaysSpending)} accent="#ea580c" />
+            <MetricCard label="Today's Earning" value={formatCurrency(report.summary.todaysEarning)} accent="#059669" />
           </div>
 
           <div style={styles.twoColumn}>
@@ -164,6 +183,49 @@ export const AdminReports = () => {
             </Panel>
           </div>
 
+          <Panel title="Monthly Order and Finance Trend">
+            {report.checkoutMetrics?.dailySeries?.length ? (
+              <div style={styles.chartGrid}>
+                <MiniBarChart
+                  title="Today's Order"
+                  color="#2563eb"
+                  items={report.checkoutMetrics.dailySeries.map((item) => ({
+                    label: item.date.slice(5),
+                    value: item.todaysOrders
+                  }))}
+                />
+                <MiniBarChart
+                  title="Order Processed"
+                  color="#0f9f6e"
+                  items={report.checkoutMetrics.dailySeries.map((item) => ({
+                    label: item.date.slice(5),
+                    value: item.ordersProcessed
+                  }))}
+                />
+                <MiniBarChart
+                  title="Today's Spending"
+                  color="#ea580c"
+                  items={report.checkoutMetrics.dailySeries.map((item) => ({
+                    label: item.date.slice(5),
+                    value: item.todaysSpending
+                  }))}
+                  formatter={formatCurrency}
+                />
+                <MiniBarChart
+                  title="Today's Earning"
+                  color="#059669"
+                  items={report.checkoutMetrics.dailySeries.map((item) => ({
+                    label: item.date.slice(5),
+                    value: item.todaysEarning
+                  }))}
+                  formatter={formatCurrency}
+                />
+              </div>
+            ) : (
+              <div style={styles.empty}>No checkout metric data in this range.</div>
+            )}
+          </Panel>
+
           <Panel title="Team Performance">
             {report.teamPerformance.length === 0 ? (
               <div style={styles.empty}>No employee data in this range.</div>
@@ -173,11 +235,16 @@ export const AdminReports = () => {
                   <thead>
                     <tr>
                       <th style={styles.tableHead}>Employee</th>
+                      <th style={styles.tableHead}>Role</th>
                       <th style={styles.tableHead}>Tasks</th>
                       <th style={styles.tableHead}>Completed</th>
                       <th style={styles.tableHead}>Tracked Time</th>
                       <th style={styles.tableHead}>Attendance</th>
                       <th style={styles.tableHead}>Late</th>
+                      <th style={styles.tableHead}>Today's Order</th>
+                      <th style={styles.tableHead}>Processed</th>
+                      <th style={styles.tableHead}>Spending</th>
+                      <th style={styles.tableHead}>Earning</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -187,6 +254,7 @@ export const AdminReports = () => {
                           <div style={styles.employeeName}>{employee.name}</div>
                           <div style={styles.employeeEmail}>{employee.email}</div>
                         </td>
+                        <td style={styles.tableCell}>{employee.role}</td>
                         <td style={styles.tableCell}>{employee.assignedTasks}</td>
                         <td style={styles.tableCell}>{employee.completedTasks}</td>
                         <td style={styles.tableCell}>
@@ -195,6 +263,10 @@ export const AdminReports = () => {
                         </td>
                         <td style={styles.tableCell}>{employee.attendanceDays} days</td>
                         <td style={styles.tableCell}>{employee.lateDays}</td>
+                        <td style={styles.tableCell}>{employee.todaysOrders}</td>
+                        <td style={styles.tableCell}>{employee.ordersProcessed}</td>
+                        <td style={styles.tableCell}>{formatCurrency(employee.todaysSpending)}</td>
+                        <td style={styles.tableCell}>{formatCurrency(employee.todaysEarning)}</td>
                       </tr>
                     ))}
                   </tbody>
@@ -256,6 +328,33 @@ const BreakdownList = ({ items }) => {
           <span style={styles.breakdownCount}>{item.count}</span>
         </div>
       ))}
+    </div>
+  );
+};
+
+const MiniBarChart = ({ title, items, color, formatter = (value) => value }) => {
+  const maxValue = Math.max(...items.map((item) => item.value), 1);
+
+  return (
+    <div style={styles.chartCard}>
+      <h4 style={styles.chartTitle}>{title}</h4>
+      <div style={styles.chartBars}>
+        {items.map((item) => (
+          <div key={`${title}-${item.label}`} style={styles.chartItem}>
+            <div style={styles.chartValue}>{formatter(item.value)}</div>
+            <div style={styles.chartBarTrack}>
+              <div
+                style={{
+                  ...styles.chartBarFill,
+                  background: color,
+                  width: `${Math.max((item.value / maxValue) * 100, item.value > 0 ? 8 : 0)}%`
+                }}
+              />
+            </div>
+            <div style={styles.chartLabel}>{item.label}</div>
+          </div>
+        ))}
+      </div>
     </div>
   );
 };
@@ -368,6 +467,53 @@ const styles = {
     display: 'grid',
     gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))',
     gap: '1rem'
+  },
+  chartGrid: {
+    display: 'grid',
+    gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))',
+    gap: '1rem'
+  },
+  chartCard: {
+    padding: '1rem',
+    borderRadius: '18px',
+    background: '#f8fbff',
+    border: '1px solid #e1ebf8'
+  },
+  chartTitle: {
+    margin: '0 0 0.9rem 0',
+    color: '#183153'
+  },
+  chartBars: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: '0.6rem'
+  },
+  chartItem: {
+    display: 'grid',
+    gridTemplateColumns: '56px 1fr 44px',
+    gap: '0.55rem',
+    alignItems: 'center'
+  },
+  chartValue: {
+    fontSize: '0.8rem',
+    color: '#44556f',
+    fontWeight: 700
+  },
+  chartBarTrack: {
+    width: '100%',
+    height: '10px',
+    background: '#e5edf8',
+    borderRadius: '999px',
+    overflow: 'hidden'
+  },
+  chartBarFill: {
+    height: '100%',
+    borderRadius: '999px'
+  },
+  chartLabel: {
+    fontSize: '0.78rem',
+    color: '#6a7b92',
+    textAlign: 'right'
   },
   panel: {
     padding: '1.2rem',

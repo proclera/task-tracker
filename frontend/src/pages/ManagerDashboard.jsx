@@ -5,10 +5,12 @@ import { CreateTaskForm } from '../components/CreateTaskForm';
 import { NotificationBellModern } from '../components/NotificationBellModern';
 import { OverdueTasksAlert } from '../components/OverdueTasksAlert';
 import { AttendancePanel } from '../components/AttendancePanel';
+import { ManagerAttendanceConfigPanel } from '../components/ManagerAttendanceConfigPanel';
 
 export const ManagerDashboard = () => {
   const { user, logout } = useAuth();
   const [refreshKey, setRefreshKey] = useState(0);
+  const [view, setView] = useState('tasks');
 
   const handleTaskCreated = () => {
     setRefreshKey((current) => current + 1);
@@ -18,6 +20,22 @@ export const ManagerDashboard = () => {
     <div style={styles.container}>
       <header style={styles.header}>
         <h1>Manager Dashboard</h1>
+        <div style={styles.nav}>
+          <button
+            type="button"
+            style={{ ...styles.navBtn, background: view === 'tasks' ? '#007bff' : '#6c757d' }}
+            onClick={() => setView('tasks')}
+          >
+            Tasks
+          </button>
+          <button
+            type="button"
+            style={{ ...styles.navBtn, background: view === 'attendance' ? '#007bff' : '#6c757d' }}
+            onClick={() => setView('attendance')}
+          >
+            Attendance
+          </button>
+        </div>
         <div style={styles.user}>
           <NotificationBellModern />
           <span>Welcome, {user.firstName}</span>
@@ -27,25 +45,33 @@ export const ManagerDashboard = () => {
 
       <main style={styles.main}>
         <OverdueTasksAlert user={user} endpoint={`/tasks?assignee_id=${user.id}`} />
-        <AttendancePanel />
-        <CreateTaskForm onSuccess={handleTaskCreated} />
-        <TaskList
-          user={user}
-          refreshToken={refreshKey}
-          title="Managed Team Tasks"
-          subtitle="These are the tasks you created for your team and the work currently visible under your lead."
-          emptyMessage="No team tasks found yet."
-          accent="blue"
-        />
-        <TaskList
-          user={user}
-          refreshToken={refreshKey}
-          endpoint={`/tasks?assignee_id=${user.id}`}
-          title="Assigned To Me"
-          subtitle="These tasks are directly assigned to you, and you can update your own progress here."
-          emptyMessage="No tasks are currently assigned to you."
-          accent="amber"
-        />
+        {view === 'attendance' ? (
+          <>
+            <AttendancePanel />
+            <ManagerAttendanceConfigPanel />
+          </>
+        ) : (
+          <>
+            <CreateTaskForm onSuccess={handleTaskCreated} />
+            <TaskList
+              user={user}
+              refreshToken={refreshKey}
+              title="Managed Team Tasks"
+              subtitle="These are the tasks you created for your team and the work currently visible under your lead."
+              emptyMessage="No team tasks found yet."
+              accent="blue"
+            />
+            <TaskList
+              user={user}
+              refreshToken={refreshKey}
+              endpoint={`/tasks?assignee_id=${user.id}`}
+              title="Assigned To Me"
+              subtitle="These tasks are directly assigned to you, and you can update your own progress here."
+              emptyMessage="No tasks are currently assigned to you."
+              accent="amber"
+            />
+          </>
+        )}
       </main>
     </div>
   );
@@ -62,7 +88,22 @@ const styles = {
     boxShadow: '0 2px 4px rgba(0,0,0,0.1)',
     display: 'flex',
     justifyContent: 'space-between',
-    alignItems: 'center'
+    alignItems: 'center',
+    gap: '1.5rem'
+  },
+  nav: {
+    display: 'flex',
+    gap: '0.5rem',
+    flex: 1,
+    justifyContent: 'center'
+  },
+  navBtn: {
+    padding: '0.5rem 1.4rem',
+    color: 'white',
+    border: 'none',
+    borderRadius: '4px',
+    cursor: 'pointer',
+    fontWeight: 'bold'
   },
   user: {
     display: 'flex',

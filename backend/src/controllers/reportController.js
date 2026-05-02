@@ -3,6 +3,109 @@ const { getRow, getRows } = require('../utils/sql');
 
 const DEFAULT_RANGE_DAYS = 30;
 
+const CHECKOUT_METRIC_KEYS = {
+  todays_orders: "Today's Order",
+  orders_processed: 'Order Processed',
+  todays_spending: "Today's Spending",
+  todays_earning: "Today's Earning"
+};
+
+const toNumber = (value) => {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : 0;
+};
+
+const roundMoney = (value) => Number(value.toFixed(2));
+
+const getCheckoutMetricRows = async (db, startDate, endDate) => getRows(
+  db,
+  `SELECT
+     ar.user_id,
+     ar.attendance_date,
+     ar.checkout_details,
+     u.first_name,
+     u.last_name,
+     u.email
+   FROM attendance_records ar
+   INNER JOIN users u ON u.id = ar.user_id
+   WHERE ar.attendance_date BETWEEN ? AND ?
+     AND ar.checkout_details IS NOT NULL
+   ORDER BY ar.attendance_date ASC, u.first_name ASC, u.last_name ASC`,
+  [startDate, endDate]
+);
+
+const buildCheckoutMetrics = (rows) => {
+  const totals = {
+    todaysOrders: 0,
+    ordersProcessed: 0,
+    todaysSpending: 0,
+    todaysEarning: 0
+  };
+  const byEmployee = new Map();
+  const byDate = new Map();
+
+  rows.forEach((row) => {
+    const details = row.checkout_details || {};
+    const values = {
+      todaysOrders: toNumber(details.todays_orders),
+      ordersProcessed: toNumber(details.orders_processed),
+      todaysSpending: toNumber(details.todays_spending),
+      todaysEarning: toNumber(details.todays_earning)
+    };
+
+    totals.todaysOrders += values.todaysOrders;
+    totals.ordersProcessed += values.ordersProcessed;
+    totals.todaysSpending += values.todaysSpending;
+    totals.todaysEarning += values.todaysEarning;
+
+    if (!byEmployee.has(row.user_id)) {
+      byEmployee.set(row.user_id, {
+        todaysOrders: 0,
+        ordersProcessed: 0,
+        todaysSpending: 0,
+        todaysEarning: 0
+      });
+    }
+
+    const employeeMetrics = byEmployee.get(row.user_id);
+    employeeMetrics.todaysOrders += values.todaysOrders;
+    employeeMetrics.ordersProcessed += values.ordersProcessed;
+    employeeMetrics.todaysSpending += values.todaysSpending;
+    employeeMetrics.todaysEarning += values.todaysEarning;
+
+    if (!byDate.has(row.attendance_date)) {
+      byDate.set(row.attendance_date, {
+        date: row.attendance_date,
+        todaysOrders: 0,
+        ordersProcessed: 0,
+        todaysSpending: 0,
+        todaysEarning: 0
+      });
+    }
+
+    const dateMetrics = byDate.get(row.attendance_date);
+    dateMetrics.todaysOrders += values.todaysOrders;
+    dateMetrics.ordersProcessed += values.ordersProcessed;
+    dateMetrics.todaysSpending += values.todaysSpending;
+    dateMetrics.todaysEarning += values.todaysEarning;
+  });
+
+  return {
+    totals: {
+      todaysOrders: totals.todaysOrders,
+      ordersProcessed: totals.ordersProcessed,
+      todaysSpending: roundMoney(totals.todaysSpending),
+      todaysEarning: roundMoney(totals.todaysEarning)
+    },
+    byEmployee,
+    dailySeries: [...byDate.values()].map((entry) => ({
+      ...entry,
+      todaysSpending: roundMoney(entry.todaysSpending),
+      todaysEarning: roundMoney(entry.todaysEarning)
+    }))
+  };
+};
+
 const isValidDateInput = (value) => /^\d{4}-\d{2}-\d{2}$/.test(value);
 
 const normalizeDateRange = (startDate, endDate) => {
@@ -80,6 +183,8 @@ const getSummary = async (db, startDate, endDate) => {
     `SELECT COUNT(*)::int as count FROM time_entries WHERE end_time IS NULL`
   );
 
+  const checkoutMetrics = buildCheckoutMetrics(await getCheckoutMetricRows(db, startDate, endDate));
+
   return {
     tasksCreated: summary?.tasks_created || 0,
     completedTasks: summary?.completed_tasks || 0,
@@ -91,12 +196,16 @@ const getSummary = async (db, startDate, endDate) => {
     attendanceDays: attendanceSummary?.attendance_days || 0,
     attendanceMinutes: attendanceSummary?.attendance_minutes || 0,
     lateDays: attendanceSummary?.late_days || 0,
-    activeTimers: activeTimers?.count || 0
+    activeTimers: activeTimers?.count || 0,
+    todaysOrders: checkoutMetrics.totals.todaysOrders,
+    ordersProcessed: checkoutMetrics.totals.ordersProcessed,
+    todaysSpending: checkoutMetrics.totals.todaysSpending,
+    todaysEarning: checkoutMetrics.totals.todaysEarning
   };
 };
 
 const getBreakdowns = async (db, startDate, endDate) => {
-  const [tasksByStatus, tasksByPriority, teamPerformance, recentActivity] = await Promise.all([
+  const [tasksByStatus, tasksByPriority, teamPerformance, recentActivity, checkoutMetricRows] = await Promise.all([
     getRows(
       db,
       `SELECT status as label, COUNT(*)::int as count
@@ -122,6 +231,7 @@ const getBreakdowns = async (db, startDate, endDate) => {
          u.first_name,
          u.last_name,
          u.email,
+         u.role,
          COALESCE(task_stats.assigned_tasks, 0)::int as assigned_tasks,
          COALESCE(task_stats.completed_tasks, 0)::int as completed_tasks,
          COALESCE(time_stats.tracked_minutes, 0)::int as tracked_minutes,
@@ -157,7 +267,7 @@ const getBreakdowns = async (db, startDate, endDate) => {
          WHERE attendance_date BETWEEN ? AND ?
          GROUP BY user_id
        ) attendance_stats ON attendance_stats.user_id = u.id
-       WHERE u.role = 'employee'
+       WHERE u.role IN ('employee', 'manager')
        ORDER BY u.first_name ASC, u.last_name ASC`,
       [startDate, endDate, startDate, endDate, startDate, endDate]
     ),
@@ -210,6 +320,8 @@ const getBreakdowns = async (db, startDate, endDate) => {
     )
   ]);
 
+  const checkoutMetrics = buildCheckoutMetrics(checkoutMetricRows);
+
   return {
     tasksByStatus,
     tasksByPriority,
@@ -217,14 +329,23 @@ const getBreakdowns = async (db, startDate, endDate) => {
       id: employee.id,
       name: `${employee.first_name} ${employee.last_name}`,
       email: employee.email,
+      role: employee.role,
       assignedTasks: employee.assigned_tasks,
       completedTasks: employee.completed_tasks,
       trackedMinutes: employee.tracked_minutes,
       timeEntries: employee.entries_count,
       attendanceDays: employee.days_present,
-      lateDays: employee.late_days
+      lateDays: employee.late_days,
+      todaysOrders: checkoutMetrics.byEmployee.get(employee.id)?.todaysOrders || 0,
+      ordersProcessed: checkoutMetrics.byEmployee.get(employee.id)?.ordersProcessed || 0,
+      todaysSpending: roundMoney(checkoutMetrics.byEmployee.get(employee.id)?.todaysSpending || 0),
+      todaysEarning: roundMoney(checkoutMetrics.byEmployee.get(employee.id)?.todaysEarning || 0)
     })),
-    recentActivity
+    recentActivity,
+    checkoutMetrics: {
+      definitions: CHECKOUT_METRIC_KEYS,
+      dailySeries: checkoutMetrics.dailySeries
+    }
   };
 };
 

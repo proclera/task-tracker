@@ -204,6 +204,7 @@ async function createTables(database) {
       total_minutes INTEGER DEFAULT 0,
       status TEXT NOT NULL DEFAULT 'present' CHECK (status IN ('present', 'late')),
       work_summary TEXT,
+      checkout_details JSONB,
       created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
       UNIQUE(user_id, attendance_date)
     )
@@ -211,6 +212,18 @@ async function createTables(database) {
 
   await database.query(`CREATE INDEX IF NOT EXISTS idx_attendance_user_date ON attendance_records(user_id, attendance_date)`);
   await database.query(`CREATE INDEX IF NOT EXISTS idx_attendance_date ON attendance_records(attendance_date)`);
+  await database.query(`
+    CREATE TABLE IF NOT EXISTS attendance_checkout_configs (
+      employee_user_id INTEGER PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+      manager_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      assigned_fields JSONB NOT NULL DEFAULT '[]'::jsonb,
+      updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+    )
+  `);
+  await database.query(`
+    CREATE INDEX IF NOT EXISTS idx_attendance_checkout_configs_manager
+    ON attendance_checkout_configs(manager_id)
+  `);
 
   await database.query(`
     CREATE TABLE IF NOT EXISTS gamification_profiles (
@@ -280,6 +293,7 @@ async function ensureColumnsExist(database) {
     CHECK (role IN (${USER_ROLES.map((role) => `'${role}'`).join(', ')}))
   `);
   await database.query(`ALTER TABLE attendance_records ADD COLUMN IF NOT EXISTS work_summary TEXT`);
+  await database.query(`ALTER TABLE attendance_records ADD COLUMN IF NOT EXISTS checkout_details JSONB`);
   await database.query(`
     ALTER TABLE task_assignments
     ADD COLUMN IF NOT EXISTS status TEXT NOT NULL DEFAULT 'pending'
