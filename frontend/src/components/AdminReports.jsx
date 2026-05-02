@@ -34,11 +34,40 @@ const formatCurrency = (value) => new Intl.NumberFormat('en-US', {
   maximumFractionDigits: 2
 }).format(Number(value || 0));
 
-const formatShortDate = (value) => new Intl.DateTimeFormat('en-US', {
-  month: 'short',
-  day: 'numeric',
-  timeZone: 'UTC'
-}).format(new Date(`${value}T00:00:00.000Z`));
+const parseReportDate = (value) => {
+  if (!value) {
+    return null;
+  }
+
+  if (value instanceof Date) {
+    return Number.isNaN(value.getTime()) ? null : value;
+  }
+
+  const normalized = String(value).trim();
+  if (!normalized) {
+    return null;
+  }
+
+  const dateValue = /^\d{4}-\d{2}-\d{2}$/.test(normalized)
+    ? new Date(`${normalized}T00:00:00.000Z`)
+    : new Date(normalized);
+
+  return Number.isNaN(dateValue.getTime()) ? null : dateValue;
+};
+
+const formatShortDate = (value) => {
+  const parsed = parseReportDate(value);
+
+  if (!parsed) {
+    return 'Unknown date';
+  }
+
+  return new Intl.DateTimeFormat('en-US', {
+    month: 'short',
+    day: 'numeric',
+    timeZone: 'UTC'
+  }).format(parsed);
+};
 
 const downloadCsv = (report, filters) => {
   const header = [

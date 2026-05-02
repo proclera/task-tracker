@@ -920,49 +920,44 @@ exports.getAnalytics = async (req, res) => {
   try {
     const db = await getDB();
 
-    // Total tasks
-    const totalTasks = await getRow(db, `SELECT COUNT(*)::int as count FROM tasks`);
-    const assignedTasks = await getRow(
-      db,
-      `SELECT COUNT(DISTINCT task_id)::int as count FROM task_assignments`
-    );
-    const pendingTasks = await getRow(db, `SELECT COUNT(*)::int as count FROM tasks WHERE status = 'pending'`);
-    const inProgressTasks = await getRow(db, `SELECT COUNT(*)::int as count FROM tasks WHERE status = 'in_progress'`);
-    const completedTasks = await getRow(db, `SELECT COUNT(*)::int as count FROM tasks WHERE status = 'completed'`);
-
-    // Tasks by priority
-    const tasksByPriority = await getRows(db, `SELECT priority, COUNT(*)::int as count FROM tasks GROUP BY priority`);
-
-    // Tasks per employee
-    const tasksPerEmployee = await getRows(
-      db,
-      `SELECT u.id, u.first_name || ' ' || u.last_name as name,
-              COUNT(t.id)::int as total_tasks,
-              COALESCE(SUM(CASE WHEN ta.status = 'completed' THEN 1 ELSE 0 END), 0)::int as completed
-       FROM users u
-       LEFT JOIN task_assignments ta ON u.id = ta.user_id
-       LEFT JOIN tasks t ON ta.task_id = t.id
-       WHERE u.role = 'employee'
-       GROUP BY u.id
-       ORDER BY name ASC`
-    );
-
-    // Recent activity
-    const recentTasks = await getRows(
-      db,
-       `SELECT t.*, COALESCE(assignments.assignee_names, '') as assignee_names,
-               NULLIF(COALESCE(assignments.assignee_names, ''), '') as assignee_name
-       FROM tasks t
-       LEFT JOIN (
-         SELECT
-           ta.task_id,
-           STRING_AGG(u.first_name || ' ' || u.last_name, ', ' ORDER BY u.first_name, u.last_name) as assignee_names
-         FROM task_assignments ta
-         INNER JOIN users u ON u.id = ta.user_id
-         GROUP BY ta.task_id
-       ) assignments ON assignments.task_id = t.id
-       ORDER BY t.updated_at DESC LIMIT 10`
-    );
+    const [
+      totalTasks,
+      assignedTasks,
+      pendingTasks,
+      inProgressTasks,
+      completedTasks,
+      tasksByPriority,
+      tasksPerEmployee,
+      recentTasks
+    ] = await Promise.all([
+      getRow(db, `SELECT COUNT(*)::int as count FROM tasks`),
+      getRow(db, `SELECT COUNT(DISTINCT task_id)::int as count FROM task_assignments`),
+      getRow(db, `SELECT COUNT(*)::int as count FROM tasks WHERE status = 'pending'`),
+      getRow(db, `SELECT COUNT(*)::int as count FROM tasks WHERE status = 'in_progress'`),
+      getRow(db, `SELECT COUNT(*)::int as count FROM tasks WHERE status = 'completed'`),
+      getRows(
+        db,
+        `SELECT priority, COUNT(*)::int as count
+         FROM tasks
+         GROUP BY priority
+         ORDER BY priority ASC`
+      ),
+      getRows(
+        db,
+        `SELECT
+           u.id,
+           u.first_name || ' ' || u.last_name as name,
+           COUNT(t.id)::int as total_tasks,
+           COALESCE(SUM(CASE WHEN ta.status = 'completed' THEN 1 ELSE 0 END), 0)::int as completed
+         FROM users u
+         LEFT JOIN task_assignments ta ON u.id = ta.user_id
+         LEFT JOIN tasks t ON ta.task_id = t.id
+         WHERE u.role = 'employee'
+         GROUP BY u.id, u.first_name, u.last_name
+         ORDER BY u.first_name ASC, u.last_name ASC`
+      ),
+      getRows(db, `${TASK_SELECT} ORDER BY t.updated_at DESC LIMIT 10`)
+    ]);
 
     const analytics = {
       totalTasks: totalTasks?.count || 0,

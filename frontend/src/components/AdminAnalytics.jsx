@@ -30,12 +30,26 @@ export const AdminAnalytics = () => {
     try {
       setLoading(true);
       setError('');
-      const [analyticsResponse, employeesResponse] = await Promise.all([
+      const [analyticsResult, employeesResult] = await Promise.allSettled([
         api.get('/tasks/analytics'),
         api.get('/employees')
       ]);
-      setAnalytics(analyticsResponse.data.analytics);
-      setEmployees(employeesResponse.data.employees || []);
+
+      if (analyticsResult.status === 'fulfilled') {
+        setAnalytics(analyticsResult.value.data.analytics);
+      } else {
+        setAnalytics(null);
+        setError(analyticsResult.reason?.response?.data?.error || 'Failed to load analytics');
+      }
+
+      if (employeesResult.status === 'fulfilled') {
+        setEmployees(employeesResult.value.data.employees || []);
+      } else {
+        setEmployees([]);
+        if (!analyticsResult || analyticsResult.status === 'fulfilled') {
+          setError(employeesResult.reason?.response?.data?.error || 'Failed to load users');
+        }
+      }
     } catch (err) {
       setError(err.response?.data?.error || 'Failed to load analytics');
     } finally {
