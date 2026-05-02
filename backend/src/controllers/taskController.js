@@ -8,6 +8,7 @@ const {
 } = require('../services/emailService');
 const { evaluateGoalsForAdmins } = require('./goalController');
 const { getRow, getRows } = require('../utils/sql');
+const { formatTaskCode, formatGoalCode } = require('../utils/entityCodes');
 const {
   VALID_STATUSES,
   VALID_PRIORITIES,
@@ -313,6 +314,8 @@ const buildTaskChangeSummary = (current, nextTask, newAssigneeIds, removedAssign
 
 const normalizeTaskAssignees = (task) => ({
   ...task,
+  task_code: task.task_code || formatTaskCode(task.id),
+  goal_code: task.goal_id ? (task.goal_code || formatGoalCode(task.goal_id)) : null,
   assignee_ids: Array.isArray(task.assignee_ids) ? task.assignee_ids : [],
   assignee_statuses: Array.isArray(task.assignee_statuses) ? task.assignee_statuses : [],
   my_status: task.my_status || null

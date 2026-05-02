@@ -328,7 +328,7 @@ export const AdminIdeasBoard = () => {
 
                 {idea.converted_task_id && (
                   <div style={styles.convertedBar}>
-                    Linked task #{idea.converted_task_id}: {idea.converted_task_title || 'Task created'}
+                    Linked task {idea.converted_task_code || `#${idea.converted_task_id}`}: {idea.converted_task_title || 'Task created'}
                   </div>
                 )}
 
@@ -393,7 +393,7 @@ export const AdminIdeasBoard = () => {
                     >
                       <option value="">No linked goal</option>
                       {goals.map((goal) => (
-                        <option key={goal.id} value={goal.id}>{goal.title}</option>
+                        <option key={goal.id} value={goal.id}>{goal.goal_code || `GOAL-${String(goal.id).padStart(4, '0')}`} - {goal.title}</option>
                       ))}
                     </select>
                     <div style={styles.assignmentPanel}>

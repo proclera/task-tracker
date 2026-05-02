@@ -1,6 +1,7 @@
-import { useEffect, useState } from 'react';
+﻿import { useEffect, useState } from 'react';
 import api from '../lib/api';
 import { useToast } from '../context/ToastContext';
+import { formatGoalCode } from '../lib/entityCodes';
 
 const createInitialGoal = () => ({
   title: '',
@@ -19,6 +20,11 @@ const statusStyles = {
   missed: { background: '#ffe7e7', color: '#b23636' },
   upcoming: { background: '#eef2f7', color: '#5b6d84' },
   inactive: { background: '#f0f0f0', color: '#666' }
+};
+
+const metricTypeLabels = {
+  completed_tasks: 'Tasks Completed',
+  assigned_tasks: 'Tasks Assigned'
 };
 
 export const AdminGoalsPanel = () => {
@@ -144,8 +150,8 @@ export const AdminGoalsPanel = () => {
               <option value="yearly">Yearly</option>
             </select>
             <select name="metric_type" value={goalForm.metric_type} onChange={handleChange} style={styles.input}>
-              <option value="completed_tasks">Completed Assignments</option>
-              <option value="assigned_tasks">Assigned Tasks</option>
+              <option value="completed_tasks">Tasks Completed</option>
+              <option value="assigned_tasks">Tasks Assigned</option>
             </select>
           </div>
 
@@ -200,9 +206,10 @@ export const AdminGoalsPanel = () => {
                 <div key={goal.id} style={styles.goalCard}>
                   <div style={styles.goalHeader}>
                     <div>
+                      <div style={styles.goalCode}>{goal.goal_code || formatGoalCode(goal.id)}</div>
                       <div style={styles.goalTitle}>{goal.title}</div>
                       <div style={styles.goalMeta}>
-                        {goal.period_type} • {goal.metric_type === 'completed_tasks' ? 'completed assignments' : 'assigned tasks'}
+                        {goal.period_type} • {(metricTypeLabels[goal.metric_type] || goal.metric_type).toLowerCase()}
                       </div>
                     </div>
                     <span style={{ ...styles.statusBadge, ...(statusStyles[goal.status] || statusStyles.inactive) }}>
@@ -388,6 +395,13 @@ const styles = {
     color: '#183153',
     marginBottom: '0.25rem'
   },
+  goalCode: {
+    fontSize: '0.76rem',
+    fontWeight: 800,
+    color: '#4f6f98',
+    letterSpacing: '0.06em',
+    marginBottom: '0.2rem'
+  },
   goalMeta: {
     fontSize: '0.84rem',
     color: '#667892',
@@ -443,3 +457,4 @@ const styles = {
     cursor: 'pointer'
   }
 };
+

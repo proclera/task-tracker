@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import api from '../lib/api';
 import { useToast } from '../context/ToastContext';
 import { useAuth } from '../context/AuthContext';
+import { formatGoalCode } from '../lib/entityCodes';
 
 export const CreateTaskForm = ({ onSuccess }) => {
   const [formData, setFormData] = useState({
@@ -161,7 +162,7 @@ export const CreateTaskForm = ({ onSuccess }) => {
             <option value="">No linked goal</option>
             {goals.map((goal) => (
               <option key={goal.id} value={goal.id}>
-                {goal.title}
+                {(goal.goal_code || formatGoalCode(goal.id))} - {goal.title}
               </option>
             ))}
           </select>

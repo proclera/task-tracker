@@ -2,6 +2,7 @@ const { getDB, saveDB } = require('../config/database');
 const { getRow, getRows } = require('../utils/sql');
 const { isPlainObject, normalizeOptionalText, toPositiveInt } = require('../utils/validation');
 const { createNotification } = require('./notificationController');
+const { formatGoalCode } = require('../utils/entityCodes');
 
 const VALID_PERIOD_TYPES = ['weekly', 'monthly', 'yearly'];
 const VALID_METRIC_TYPES = ['assigned_tasks', 'completed_tasks'];
@@ -182,6 +183,7 @@ const enrichGoal = async (db, goal) => {
 
   return {
     ...goal,
+    goal_code: goal.goal_code || formatGoalCode(goal.id),
     progress_count: progressCount,
     remaining_count: Math.max(0, goal.target_count - progressCount),
     completion_percent: completionPercent,

@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import api from '../lib/api';
 import { useToast } from '../context/ToastContext';
 import { formatServerDateTime } from '../lib/datetime';
+import { formatGoalCode, formatTaskCode } from '../lib/entityCodes';
 
 const createAdminFormState = (task) => ({
   title: task.title || '',
@@ -299,6 +300,7 @@ export const TaskManagementModal = ({ task, onClose, user, onUpdate }) => {
         <button type="button" style={styles.closeBtn} onClick={onClose}>x</button>
 
         <div style={styles.header}>
+          <div style={styles.taskCode}>{taskData.task_code || formatTaskCode(taskData.id)}</div>
           <h2 style={styles.title}>{taskData.title}</h2>
           <p style={styles.subtitle}>
             {showAdminEditor
@@ -404,7 +406,7 @@ export const TaskManagementModal = ({ task, onClose, user, onUpdate }) => {
                       <option value="">No linked goal</option>
                       {goals.map((goal) => (
                         <option key={goal.id} value={goal.id}>
-                          {goal.title}
+                          {(goal.goal_code || formatGoalCode(goal.id))} - {goal.title}
                         </option>
                       ))}
                     </select>
@@ -495,7 +497,7 @@ export const TaskManagementModal = ({ task, onClose, user, onUpdate }) => {
             {taskData.goal_title && (
               <div style={styles.metaItem}>
                 <span style={styles.metaLabel}>Linked goal:</span>
-                <span>{taskData.goal_title}</span>
+                <span>{taskData.goal_code || (taskData.goal_id ? formatGoalCode(taskData.goal_id) : '')}{taskData.goal_title ? ` - ${taskData.goal_title}` : ''}</span>
               </div>
             )}
             {taskData.due_date && (
@@ -700,6 +702,13 @@ const styles = {
   title: {
     margin: '0 0 0.35rem 0',
     color: '#183153'
+  },
+  taskCode: {
+    fontSize: '0.78rem',
+    fontWeight: 800,
+    color: '#4f6f98',
+    letterSpacing: '0.06em',
+    marginBottom: '0.3rem'
   },
   subtitle: {
     margin: '0 0 1rem 0',

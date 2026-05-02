@@ -2,6 +2,8 @@ const { getDB, saveDB } = require('../config/database');
 const { getRow, getRows } = require('../utils/sql');
 const { isPlainObject, normalizeOptionalText, toPositiveInt } = require('../utils/validation');
 const { createNotification } = require('./notificationController');
+const { sendIdeaSharedEmail } = require('../services/emailService');
+const { formatTaskCode } = require('../utils/entityCodes');
 
 const IDEA_STATUSES = ['new', 'under_review', 'approved', 'in_progress', 'rejected'];
 const IDEA_PRIORITIES = ['low', 'medium', 'high'];
@@ -109,6 +111,7 @@ const buildIdeaResponse = async (db, ideas) => {
 
   return ideas.map((idea) => ({
     ...idea,
+    converted_task_code: idea.converted_task_id ? formatTaskCode(idea.converted_task_id) : null,
     comments: commentsByIdeaId.get(idea.id) || [],
     comments_count: (commentsByIdeaId.get(idea.id) || []).length
   }));
@@ -117,6 +120,18 @@ const buildIdeaResponse = async (db, ideas) => {
 const getAllAdminIds = async (db) => {
   const admins = await getRows(db, `SELECT id FROM users WHERE role = 'admin'`);
   return admins.map((admin) => admin.id);
+};
+
+const getAdminContacts = async (db, excludeUserId = null) => {
+  const admins = await getRows(
+    db,
+    `SELECT id, email, first_name, last_name
+     FROM users
+     WHERE role = 'admin'
+     ORDER BY first_name ASC, last_name ASC`
+  );
+
+  return admins.filter((admin) => admin.id !== excludeUserId);
 };
 
 const notifyIdeaParticipants = async (db, idea, actorId, title, message) => {
@@ -190,6 +205,27 @@ const syncTaskAssignments = async (db, taskId, assigneeIds) => {
   }
 };
 
+const emailAdminsAboutIdea = async (db, idea, excludeUserId = null) => {
+  const admins = await getAdminContacts(db, excludeUserId);
+
+  await Promise.all(
+    admins.map(async (admin) => {
+      try {
+        await sendIdeaSharedEmail({
+          to: admin.email,
+          recipientName: `${admin.first_name} ${admin.last_name}`.trim(),
+          ideaTitle: idea.title,
+          ideaCategory: idea.category,
+          ideaPriority: idea.priority,
+          sharedByName: idea.created_by_name
+        });
+      } catch (error) {
+        console.error(`Idea shared email failed for ${admin.email}:`, error.message);
+      }
+    })
+  );
+};
+
 exports.getIdeas = async (req, res) => {
   try {
     const db = await getDB();
@@ -238,6 +274,7 @@ exports.createIdea = async (req, res) => {
       'New Admin Idea',
       `${createdIdea.created_by_name} shared a new idea: ${createdIdea.title}`
     );
+    await emailAdminsAboutIdea(db, createdIdea, req.user.id);
     await saveDB();
 
     const [ideaWithComments] = await buildIdeaResponse(db, [createdIdea]);

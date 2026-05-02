@@ -14,6 +14,11 @@ const getDefaultRange = () => {
   };
 };
 
+const normalizeReportFilters = (value) => ({
+  start_date: value?.start_date || value?.startDate || getDefaultRange().start_date,
+  end_date: value?.end_date || value?.endDate || getDefaultRange().end_date
+});
+
 const formatMinutes = (minutes) => {
   if (!minutes) {
     return '0h 0m';
@@ -95,7 +100,7 @@ export const AdminReports = () => {
       setError('');
       const response = await api.get('/reports/summary', { params: nextFilters });
       setReport(response.data.report);
-      setFilters(response.data.filters);
+      setFilters(normalizeReportFilters(response.data.filters));
     } catch (err) {
       setError(err.response?.data?.error || 'Failed to generate report');
     } finally {

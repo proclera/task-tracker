@@ -153,10 +153,36 @@ const sendTaskProgressEmail = async ({
   });
 };
 
+const sendIdeaSharedEmail = async ({
+  to,
+  recipientName,
+  ideaTitle,
+  ideaCategory,
+  ideaPriority,
+  sharedByName
+}) => {
+  const detailLines = [
+    sharedByName ? `Shared by: ${sharedByName}` : null,
+    ideaCategory ? `Category: ${ideaCategory}` : null,
+    ideaPriority ? `Priority: ${ideaPriority}` : null
+  ].filter(Boolean);
+
+  return sendTaskNotificationEmail({
+    to,
+    recipientName,
+    heading: 'New admin idea shared',
+    subject: `New admin idea: ${ideaTitle}`,
+    intro: `A new admin idea has been shared: "${ideaTitle}".`,
+    detailLines,
+    closing: 'Please log in to the ideas hub to review and discuss it.'
+  });
+};
+
 module.exports = {
   isEmailConfigured,
   sendEmail,
   sendTaskAssignmentEmail,
   sendTaskUpdateEmail,
-  sendTaskProgressEmail
+  sendTaskProgressEmail,
+  sendIdeaSharedEmail
 };

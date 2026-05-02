@@ -3,6 +3,7 @@ import { TaskManagementModal } from './TaskManagementModal';
 import api from '../lib/api';
 import { useToast } from '../context/ToastContext';
 import { formatDateLabel, formatServerDateTime, isDateOverdue } from '../lib/datetime';
+import { formatGoalCode, formatTaskCode } from '../lib/entityCodes';
 
 export const TaskList = ({
   user,
@@ -291,6 +292,8 @@ const TaskCard = ({ task, user, onStatusChange, onClick, accent = 'blue' }) => {
   const creatorRoleLabel = user.role === 'admin' && task.created_by_role === 'manager'
     ? 'Manager Created'
     : '';
+  const taskCode = task.task_code || formatTaskCode(task.id);
+  const goalCode = task.goal_id ? (task.goal_code || formatGoalCode(task.goal_id)) : '';
 
   return (
     <div
@@ -326,13 +329,14 @@ const TaskCard = ({ task, user, onStatusChange, onClick, accent = 'blue' }) => {
         {isOverdue && <span style={{ ...styles.badge, ...styles.overdueBadge }}>overdue</span>}
       </div>
 
+      <div style={styles.codeLabel}>{taskCode}</div>
       <h3 style={styles.cardTitle}>{task.title}</h3>
       {task.description && <p style={styles.cardDesc}>{task.description}</p>}
 
       <div style={styles.metaStrip}>
         <span style={styles.metaChip}>Assigned: {task.assignee_names || task.assignee_name || 'Unassigned'}</span>
         {task.goal_title && (
-          <span style={styles.metaChip}>Goal: {task.goal_title}</span>
+          <span style={styles.metaChip}>Goal: {goalCode ? `${goalCode} - ${task.goal_title}` : task.goal_title}</span>
         )}
         {task.due_date && (
           <span style={{ ...styles.metaChip, ...(isOverdue ? styles.metaChipOverdue : {}) }}>
@@ -538,6 +542,13 @@ const styles = {
     fontWeight: 'bold',
     marginBottom: '0.5rem',
     color: '#183153'
+  },
+  codeLabel: {
+    fontSize: '0.77rem',
+    fontWeight: 800,
+    color: '#4f6f98',
+    letterSpacing: '0.06em',
+    marginBottom: '0.35rem'
   },
   cardDesc: {
     color: '#5e6f89',
