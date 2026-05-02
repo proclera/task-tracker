@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
+import { AppBrand } from '../components/AppBrand';
 
 export const LoginPage = () => {
   const [email, setEmail] = useState('');
@@ -50,7 +51,7 @@ export const LoginPage = () => {
   return (
     <div style={styles.container}>
       <div style={styles.card}>
-        <h1 style={styles.title}>Task Tracker</h1>
+        <AppBrand centered subtitle="Admin and team workspace" />
         <h2 style={styles.subtitle}>Sign In</h2>
 
         {error && <div style={styles.error}>{error}</div>}
@@ -98,17 +99,11 @@ const styles = {
     width: '100%',
     maxWidth: '400px'
   },
-  title: {
-    fontSize: '1.5rem',
-    fontWeight: 'bold',
-    textAlign: 'center',
-    marginBottom: '0.5rem'
-  },
   subtitle: {
     fontSize: '1.25rem',
     textAlign: 'center',
     color: '#666',
-    marginBottom: '1.5rem'
+    margin: '1rem 0 1.5rem'
   },
   error: {
     background: '#fee',

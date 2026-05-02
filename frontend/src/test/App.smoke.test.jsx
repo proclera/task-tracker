@@ -48,7 +48,7 @@ describe('App smoke tests', () => {
 
     renderApp(['/']);
 
-    expect(screen.getByText('Task Tracker')).toBeInTheDocument();
+    expect(screen.getByAltText('ECOM Trades')).toBeInTheDocument();
     expect(screen.getByText('Loading your workspace...')).toBeInTheDocument();
   });
 

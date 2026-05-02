@@ -6,6 +6,7 @@ import { EmployeeDashboard } from './pages/EmployeeDashboard';
 import { ManagerDashboard } from './pages/ManagerDashboard';
 import { ProtectedRoute } from './components/ProtectedRoute';
 import { ToastViewport } from './components/ToastViewport';
+import { AppBrand } from './components/AppBrand';
 
 const getDashboardRoute = (role) => {
   if (role === 'admin') return '/admin';
@@ -19,9 +20,8 @@ function App() {
   if (loading) {
     return (
       <div style={styles.loadingScreen}>
-        <div style={styles.loadingOrb} />
-        <h1 style={styles.loadingTitle}>Task Tracker</h1>
-        <p style={styles.loadingText}>Loading your workspace...</p>
+        <AppBrand centered subtitle="Loading your workspace..." />
+        <p style={styles.loadingText}>Please wait a moment.</p>
       </div>
     );
   }
@@ -81,18 +81,6 @@ const styles = {
     gap: '14px',
     background: 'radial-gradient(circle at top, rgba(222, 233, 255, 0.95), #f4f7fb 48%, #eef2f6 100%)',
     color: '#173053'
-  },
-  loadingOrb: {
-    width: '64px',
-    height: '64px',
-    borderRadius: '50%',
-    background: 'linear-gradient(135deg, #1e63d4, #69a6ff)',
-    boxShadow: '0 18px 40px rgba(30, 99, 212, 0.28)',
-    animation: 'pulse 1.4s ease-in-out infinite'
-  },
-  loadingTitle: {
-    fontSize: '1.8rem',
-    margin: 0
   },
   loadingText: {
     margin: 0,
