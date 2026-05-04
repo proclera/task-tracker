@@ -1,9 +1,22 @@
 import { useEffect, useState } from 'react';
 import api from '../lib/api';
-import { formatServerDateTime, formatServerTime } from '../lib/datetime';
+import { formatDateLabel, formatServerDateTime, formatServerTime } from '../lib/datetime';
 import { formatCheckoutDetailsEntries } from '../lib/attendanceCheckout';
 
 const getCurrentMonthValue = () => new Date().toISOString().slice(0, 7);
+
+const formatAttendanceDate = (value) =>
+  formatDateLabel(value, { weekday: 'short', month: 'short', day: '2-digit', year: 'numeric' }) || value;
+
+const getStatusStyle = (status) => {
+  const normalized = String(status || '').toLowerCase();
+
+  if (normalized === 'late') {
+    return { ...styles.statusBadge, ...styles.statusLate };
+  }
+
+  return { ...styles.statusBadge, ...styles.statusPresent };
+};
 
 export const AdminAttendanceOverview = () => {
   const [summary, setSummary] = useState(null);
@@ -114,13 +127,37 @@ export const AdminAttendanceOverview = () => {
         {summary?.monthlyAttendance?.length ? (
           summary.monthlyAttendance.map((record) => (
             <div key={record.id} style={styles.record}>
+              <div style={styles.recordHeader}>
+                <div style={styles.recordIdentity}>
+                  <div style={styles.recordName}>{record.user_name}</div>
+                  <div style={styles.recordDate}>{formatAttendanceDate(record.attendance_date)}</div>
+                </div>
+                <div style={styles.recordMeta}>
+                  <span style={getStatusStyle(record.status)}>{record.status}</span>
+                  <span style={styles.recordCheckInDate}>
+                    {formatServerDateTime(record.check_in_time, {
+                      day: '2-digit',
+                      month: 'short',
+                      hour: 'numeric',
+                      minute: '2-digit'
+                    })}
+                  </span>
+                </div>
+              </div>
               <div style={styles.recordBody}>
-                <div style={styles.recordName}>{record.user_name}</div>
-                <div style={styles.recordDate}>{record.attendance_date}</div>
                 <div style={styles.recordTimes}>
-                  <span>In: {formatServerTime(record.check_in_time)}</span>
-                  <span>Out: {record.check_out_time ? formatServerTime(record.check_out_time) : 'In progress'}</span>
-                  <span>{record.total_minutes || 0} min</span>
+                  <span style={styles.timePill}>
+                    <strong style={styles.timeLabel}>In</strong>
+                    {formatServerTime(record.check_in_time)}
+                  </span>
+                  <span style={styles.timePill}>
+                    <strong style={styles.timeLabel}>Out</strong>
+                    {record.check_out_time ? formatServerTime(record.check_out_time) : 'In progress'}
+                  </span>
+                  <span style={styles.timePill}>
+                    <strong style={styles.timeLabel}>Total</strong>
+                    {record.total_minutes || 0} min
+                  </span>
                 </div>
                 {record.checkout_details ? (
                   <div style={styles.detailGrid}>
@@ -134,10 +171,6 @@ export const AdminAttendanceOverview = () => {
                 ) : (
                   record.work_summary && <div style={styles.recordSummary}>{record.work_summary}</div>
                 )}
-              </div>
-              <div style={styles.recordMeta}>
-                <span>{record.status}</span>
-                <span>{formatServerDateTime(record.check_in_time, { day: '2-digit', month: 'short', hour: 'numeric', minute: '2-digit' })}</span>
               </div>
             </div>
           ))
@@ -243,7 +276,7 @@ const styles = {
   },
   listCard: {
     background: 'white',
-    padding: '1.25rem',
+    padding: '1.15rem',
     borderRadius: '18px',
     boxShadow: '0 14px 36px rgba(31, 45, 76, 0.08)'
   },
@@ -252,33 +285,63 @@ const styles = {
     color: '#183153'
   },
   record: {
+    padding: '1rem',
+    border: '1px solid #e7eef8',
+    borderRadius: '14px',
+    background: '#fbfdff',
+    boxShadow: '0 8px 18px rgba(24, 49, 83, 0.04)',
+    marginBottom: '0.85rem'
+  },
+  recordHeader: {
     display: 'flex',
     justifyContent: 'space-between',
     alignItems: 'flex-start',
     gap: '1rem',
-    padding: '0.85rem 0',
-    borderBottom: '1px solid #edf2f7'
+    marginBottom: '0.75rem',
+    flexWrap: 'wrap'
+  },
+  recordIdentity: {
+    minWidth: '210px'
   },
   recordBody: {
-    flex: 1,
     minWidth: 0
   },
   recordName: {
     fontWeight: 700,
     color: '#183153',
-    marginBottom: '0.25rem'
+    marginBottom: '0.3rem',
+    fontSize: '1rem'
   },
   recordDate: {
-    color: '#667892',
-    fontSize: '0.9rem'
+    display: 'inline-flex',
+    alignItems: 'center',
+    padding: '0.3rem 0.55rem',
+    borderRadius: '999px',
+    background: '#eef4ff',
+    color: '#365a89',
+    fontSize: '0.84rem',
+    fontWeight: 700
   },
   recordTimes: {
     display: 'flex',
     flexWrap: 'wrap',
-    gap: '0.8rem',
+    gap: '0.6rem',
     color: '#667892',
-    fontSize: '0.9rem',
-    marginTop: '0.35rem'
+    fontSize: '0.9rem'
+  },
+  timePill: {
+    display: 'inline-flex',
+    alignItems: 'center',
+    gap: '0.35rem',
+    minHeight: '34px',
+    padding: '0.45rem 0.65rem',
+    borderRadius: '10px',
+    background: '#f3f7fc',
+    color: '#415875',
+    border: '1px solid #e6edf7'
+  },
+  timeLabel: {
+    color: '#183153'
   },
   recordSummary: {
     marginTop: '0.65rem',
@@ -291,14 +354,15 @@ const styles = {
   },
   detailGrid: {
     display: 'grid',
-    gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))',
+    gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))',
     gap: '0.7rem',
     marginTop: '0.65rem'
   },
   detailItem: {
     padding: '0.75rem 0.85rem',
     borderRadius: '12px',
-    background: '#f4f7fb'
+    background: '#f3f7fc',
+    border: '1px solid #e6edf7'
   },
   detailLabel: {
     color: '#667892',
@@ -316,6 +380,29 @@ const styles = {
     alignItems: 'flex-end',
     color: '#667892',
     fontSize: '0.9rem'
+  },
+  recordCheckInDate: {
+    color: '#536987',
+    whiteSpace: 'nowrap'
+  },
+  statusBadge: {
+    display: 'inline-flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    minHeight: '28px',
+    padding: '0.3rem 0.65rem',
+    borderRadius: '999px',
+    fontSize: '0.78rem',
+    fontWeight: 800,
+    textTransform: 'capitalize'
+  },
+  statusPresent: {
+    background: '#e7f7ef',
+    color: '#13784a'
+  },
+  statusLate: {
+    background: '#fff4df',
+    color: '#a65b00'
   },
   empty: {
     color: '#667892',
