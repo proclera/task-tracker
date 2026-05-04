@@ -5,8 +5,51 @@ import { formatCheckoutDetailsEntries } from '../lib/attendanceCheckout';
 
 const getCurrentMonthValue = () => new Date().toISOString().slice(0, 7);
 
-const formatAttendanceDate = (value) =>
-  formatDateLabel(value, { weekday: 'short', month: 'short', day: '2-digit', year: 'numeric' }) || value;
+const formatAttendanceDate = (value) => {
+  const formatted = formatDateLabel(value, {
+    weekday: 'short',
+    month: 'short',
+    day: '2-digit',
+    year: 'numeric'
+  });
+
+  return formatted && formatted !== 'Invalid Date' ? formatted : 'Date unavailable';
+};
+
+const formatRecordDateTime = (value) => {
+  const formatted = formatServerDateTime(value, {
+    month: 'short',
+    day: '2-digit',
+    hour: 'numeric',
+    minute: '2-digit'
+  });
+
+  return formatted && formatted !== 'Invalid Date' ? formatted : '';
+};
+
+const formatTimeValue = (value) => {
+  const formatted = formatServerTime(value, {
+    hour: 'numeric',
+    minute: '2-digit'
+  });
+
+  return formatted && formatted !== 'Invalid Date' ? formatted : 'Not recorded';
+};
+
+const formatDuration = (minutes) => {
+  const totalMinutes = Number(minutes) || 0;
+  const hours = Math.floor(totalMinutes / 60);
+  const mins = totalMinutes % 60;
+
+  if (hours && mins) return `${hours}h ${mins}m`;
+  if (hours) return `${hours}h`;
+  return `${mins}m`;
+};
+
+const formatStatusLabel = (status) => {
+  const normalized = String(status || '').trim();
+  return normalized ? normalized.replace(/_/g, ' ') : 'Unknown';
+};
 
 const getStatusStyle = (status) => {
   const normalized = String(status || '').toLowerCase();
@@ -133,14 +176,9 @@ export const AdminAttendanceOverview = () => {
                   <div style={styles.recordDate}>{formatAttendanceDate(record.attendance_date)}</div>
                 </div>
                 <div style={styles.recordMeta}>
-                  <span style={getStatusStyle(record.status)}>{record.status}</span>
+                  <span style={getStatusStyle(record.status)}>{formatStatusLabel(record.status)}</span>
                   <span style={styles.recordCheckInDate}>
-                    {formatServerDateTime(record.check_in_time, {
-                      day: '2-digit',
-                      month: 'short',
-                      hour: 'numeric',
-                      minute: '2-digit'
-                    })}
+                    {formatRecordDateTime(record.check_in_time)}
                   </span>
                 </div>
               </div>
@@ -148,15 +186,17 @@ export const AdminAttendanceOverview = () => {
                 <div style={styles.recordTimes}>
                   <span style={styles.timePill}>
                     <strong style={styles.timeLabel}>In</strong>
-                    {formatServerTime(record.check_in_time)}
+                    <span style={styles.timeValue}>{formatTimeValue(record.check_in_time)}</span>
                   </span>
                   <span style={styles.timePill}>
                     <strong style={styles.timeLabel}>Out</strong>
-                    {record.check_out_time ? formatServerTime(record.check_out_time) : 'In progress'}
+                    <span style={styles.timeValue}>
+                      {record.check_out_time ? formatTimeValue(record.check_out_time) : 'In progress'}
+                    </span>
                   </span>
                   <span style={styles.timePill}>
                     <strong style={styles.timeLabel}>Total</strong>
-                    {record.total_minutes || 0} min
+                    <span style={styles.timeValue}>{formatDuration(record.total_minutes)}</span>
                   </span>
                 </div>
                 {record.checkout_details ? (
@@ -325,23 +365,32 @@ const styles = {
   recordTimes: {
     display: 'flex',
     flexWrap: 'wrap',
-    gap: '0.6rem',
+    gap: '0.65rem',
     color: '#667892',
     fontSize: '0.9rem'
   },
   timePill: {
     display: 'inline-flex',
     alignItems: 'center',
-    gap: '0.35rem',
-    minHeight: '34px',
-    padding: '0.45rem 0.65rem',
-    borderRadius: '10px',
-    background: '#f3f7fc',
+    gap: '0.45rem',
+    minHeight: '38px',
+    padding: '0.5rem 0.75rem',
+    borderRadius: '8px',
+    background: '#f6f9fd',
     color: '#415875',
-    border: '1px solid #e6edf7'
+    border: '1px solid #dfe8f4',
+    whiteSpace: 'nowrap'
   },
   timeLabel: {
-    color: '#183153'
+    color: '#5f7089',
+    fontSize: '0.78rem',
+    fontWeight: 800,
+    letterSpacing: 0,
+    textTransform: 'uppercase'
+  },
+  timeValue: {
+    color: '#183153',
+    fontWeight: 700
   },
   recordSummary: {
     marginTop: '0.65rem',
